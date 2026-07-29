@@ -109,11 +109,58 @@ contract MarketplaceTest is BaseTest {
 
         uint256 treasuryBefore = treasury.balance;
 
-        vm.prank(stranger); // siapa pun boleh trigger withdraw
+        vm.prank(stranger); // anyone may trigger withdraw
         marketplace.withdraw();
 
         assertEq(treasury.balance, treasuryBefore + PRICE);
         assertEq(address(marketplace).balance, 0);
+    }
+
+    function test_withdraw_revertsWhenTreasuryRejectsEth() public {
+        vm.prank(lister);
+        marketplace.createSale(SKILL_ID, PRICE, MAX_SUPPLY);
+        vm.prank(buyer);
+        marketplace.buy{value: PRICE}(SKILL_ID, 1);
+
+        // A contract without receive/fallback rejects the ETH transfer.
+        address rejecting = address(new RejectsEth());
+        vm.prank(admin);
+        marketplace.setTreasury(rejecting);
+
+        vm.expectRevert(Marketplace.WithdrawFailed.selector);
+        marketplace.withdraw();
+    }
+
+    function test_setTreasury_updatesAndEmits() public {
+        address newTreasury = makeAddr("newTreasury");
+
+        vm.prank(admin);
+        vm.expectEmit(true, false, false, false);
+        emit Marketplace.TreasuryUpdated(newTreasury);
+        marketplace.setTreasury(newTreasury);
+
+        assertEq(marketplace.treasury(), newTreasury);
+    }
+
+    function test_setTreasury_onlyAdmin() public {
+        bytes32 adminRole = marketplace.DEFAULT_ADMIN_ROLE();
+        vm.prank(stranger);
+        vm.expectRevert(
+            abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, stranger, adminRole)
+        );
+        marketplace.setTreasury(stranger);
+    }
+
+    function test_setTreasury_revertsZeroAddress() public {
+        vm.prank(admin);
+        vm.expectRevert(Marketplace.ZeroAddress.selector);
+        marketplace.setTreasury(address(0));
+    }
+
+    function test_setSaleActive_revertsSaleNotFound() public {
+        vm.prank(admin);
+        vm.expectRevert(abi.encodeWithSelector(Marketplace.SaleNotFound.selector, SKILL_ID));
+        marketplace.setSaleActive(SKILL_ID, false);
     }
 
     function test_setSaleActive_onlyAdmin() public {
@@ -128,3 +175,6 @@ contract MarketplaceTest is BaseTest {
         marketplace.setSaleActive(SKILL_ID, false);
     }
 }
+
+/// @dev Has no receive/fallback, so any plain ETH transfer to it fails.
+contract RejectsEth {}

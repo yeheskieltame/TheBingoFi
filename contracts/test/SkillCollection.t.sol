@@ -30,7 +30,7 @@ contract SkillCollectionTest is BaseTest {
     function test_royaltyInfo_returnsFivePercentToReceiver() public view {
         (address receiver, uint256 amount) = collection.royaltyInfo(1, 1000 ether);
         assertEq(receiver, treasury);
-        assertEq(amount, 50 ether); // 5% dari 1000
+        assertEq(amount, 50 ether); // 5% of 1000
     }
 
     function test_supportsInterface_erc1155AndErc2981AndAccessControl() public view {
@@ -46,6 +46,12 @@ contract SkillCollectionTest is BaseTest {
             abi.encodeWithSelector(IAccessControl.AccessControlUnauthorizedAccount.selector, stranger, adminRole)
         );
         collection.setURI("ipfs://new/{id}.json");
+    }
+
+    function test_setURI_asAdminUpdatesUri() public {
+        vm.prank(admin);
+        collection.setURI("ipfs://new/{id}.json");
+        assertEq(collection.uri(1), "ipfs://new/{id}.json");
     }
 
     function test_setDefaultRoyalty_onlyAdmin() public {

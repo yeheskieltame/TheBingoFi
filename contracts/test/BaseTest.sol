@@ -7,8 +7,8 @@ import {SkillCollection} from "../src/SkillCollection.sol";
 import {Marketplace} from "../src/Marketplace.sol";
 import {SkillFactory} from "../src/SkillFactory.sol";
 
-/// @notice Base test bersama: deploy seluruh stack + wiring role, dipakai semua
-/// test suite supaya tidak duplikasi setup.
+/// @notice Shared base test: deploys the full stack + role wiring, used by all
+/// test suites to avoid duplicating setup.
 abstract contract BaseTest is Test {
     address internal admin = makeAddr("admin");
     address internal treasury = makeAddr("treasury");

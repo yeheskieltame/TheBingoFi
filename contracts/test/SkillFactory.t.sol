@@ -5,8 +5,8 @@ import {IAccessControl} from "@openzeppelin/contracts/access/IAccessControl.sol"
 import {BaseTest} from "./BaseTest.sol";
 import {SkillRegistry} from "../src/SkillRegistry.sol";
 
-/// @notice End-to-end: BaseTest sudah deploy semua kontrak + wiring role seperti
-/// script/Deploy.s.sol. Di sini diuji alur penuh createSkill -> buy.
+/// @notice End-to-end: BaseTest deploys all contracts + role wiring the same way
+/// script/Deploy.s.sol does. This suite exercises the full createSkill -> buy flow.
 contract SkillFactoryTest is BaseTest {
     uint256 internal constant PRICE = 0.02 ether;
     uint256 internal constant MAX_SUPPLY = 5;

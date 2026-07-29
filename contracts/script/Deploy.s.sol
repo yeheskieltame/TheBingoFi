@@ -7,8 +7,9 @@ import {SkillCollection} from "../src/SkillCollection.sol";
 import {Marketplace} from "../src/Marketplace.sol";
 import {SkillFactory} from "../src/SkillFactory.sol";
 
-/// @notice Deploy seluruh stack kontrak TheBingoFi (Registry, Collection, Marketplace,
-/// Factory) dan wiring role-nya. Jalankan dengan `forge script` + env var PRIVATE_KEY.
+/// @notice Deploys the full TheBingoFi contract stack (Registry, Collection,
+/// Marketplace, Factory) and wires up roles. Run with `forge script` + the
+/// PRIVATE_KEY env var.
 contract Deploy is Script {
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");
@@ -25,8 +26,8 @@ contract Deploy is Script {
         Marketplace marketplace = new Marketplace(deployer, collection, treasury);
         SkillFactory factory = new SkillFactory(deployer, registry, marketplace);
 
-        // Wiring role: Factory jadi satu-satunya jalur register skill & buka sale;
-        // Marketplace jadi satu-satunya jalur mint token.
+        // Role wiring: the Factory is the only path to register skills & open sales;
+        // the Marketplace is the only path to mint tokens.
         registry.grantRole(registry.REGISTRAR_ROLE(), address(factory));
         marketplace.grantRole(marketplace.LISTER_ROLE(), address(factory));
         collection.grantRole(collection.MINTER_ROLE(), address(marketplace));
@@ -43,9 +44,9 @@ contract Deploy is Script {
         _writeDeploymentJson(registry, collection, marketplace, factory, treasury);
     }
 
-    /// @notice Tulis alamat hasil deploy ke `deployments/<chainId>.json` supaya
-    /// FE/server tinggal baca file ini, tanpa hardcode address di kode.
-    /// Bukan bagian dari logic deploy — murni output artefak untuk konsumen off-chain.
+    /// @notice Writes the deployed addresses to `deployments/<chainId>.json` so
+    /// FE/server can read this file instead of hardcoding addresses.
+    /// Not part of the deploy logic — purely an artifact for off-chain consumers.
     function _writeDeploymentJson(
         SkillRegistry registry,
         SkillCollection collection,

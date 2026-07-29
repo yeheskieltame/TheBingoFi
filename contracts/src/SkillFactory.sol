@@ -6,17 +6,18 @@ import {SkillRegistry} from "./SkillRegistry.sol";
 import {Marketplace} from "./Marketplace.sol";
 
 /// @title SkillFactory
-/// @notice Entry point tunggal platform untuk merilis skill/skin baru: satu call
-/// `createSkill` mendaftarkan definisi ke Registry sekaligus membuka sale primer
-/// di Marketplace. Tidak ada deploy kontrak baru per skill (modular by design).
+/// @notice The platform's single entry point for releasing new skills/skins: one
+/// `createSkill` call registers the definition in the Registry and opens the
+/// primary sale on the Marketplace. No per-skill contract deployment
+/// (modular by design).
 contract SkillFactory is AccessControl {
-    /// @notice Role yang diizinkan merilis skill baru (platform/creator).
+    /// @notice Role allowed to release new skills (platform/creator).
     bytes32 public constant CREATOR_ROLE = keccak256("CREATOR_ROLE");
 
-    /// @notice Registry katalog skill.
+    /// @notice Skill catalog registry.
     SkillRegistry public immutable registry;
 
-    /// @notice Marketplace tempat sale primer dibuka.
+    /// @notice Marketplace where primary sales are opened.
     Marketplace public immutable marketplace;
 
     event SkillCreated(uint256 indexed skillId, bytes32 indexed effectType, uint256 maxSupply, uint256 price);
@@ -28,7 +29,7 @@ contract SkillFactory is AccessControl {
         marketplace = marketplace_;
     }
 
-    /// @notice Daftarkan skill baru di Registry lalu langsung buka sale primer.
+    /// @notice Register a new skill in the Registry and immediately open its primary sale.
     function createSkill(SkillRegistry.SkillDef calldata def, uint256 maxSupply, uint256 price)
         external
         onlyRole(CREATOR_ROLE)

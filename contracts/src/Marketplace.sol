@@ -5,13 +5,14 @@ import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {SkillCollection} from "./SkillCollection.sol";
 
 /// @title Marketplace
-/// @notice Primary sale untuk Skill/Skin NFT — mint on purchase, bukan mekanisme
-/// betting/stake apa pun. Harga fixed per skillId, revenue masuk treasury platform.
+/// @notice Primary sale for Skill/Skin NFTs — mint on purchase, never any
+/// betting/staking mechanic. Fixed price per skillId; revenue goes to the
+/// platform treasury.
 contract Marketplace is AccessControl {
-    /// @notice Role yang diizinkan membuka sale baru (dipegang SkillFactory).
+    /// @notice Role allowed to open new sales (held by SkillFactory).
     bytes32 public constant LISTER_ROLE = keccak256("LISTER_ROLE");
 
-    /// @notice Info sale primer untuk satu skillId.
+    /// @notice Primary sale info for one skillId.
     struct Sale {
         uint256 price;
         uint256 maxSupply;
@@ -19,10 +20,10 @@ contract Marketplace is AccessControl {
         bool active;
     }
 
-    /// @notice Koleksi ERC-1155 tempat token di-mint.
+    /// @notice ERC-1155 collection the tokens are minted from.
     SkillCollection public immutable collection;
 
-    /// @notice Alamat penerima dana hasil penjualan.
+    /// @notice Address receiving sale proceeds.
     address public treasury;
 
     /// @notice skillId => Sale.
@@ -50,7 +51,7 @@ contract Marketplace is AccessControl {
         treasury = treasury_;
     }
 
-    /// @notice Buka sale primer baru untuk sebuah skillId. Langsung aktif.
+    /// @notice Open a new primary sale for a skillId. Active immediately.
     function createSale(uint256 skillId, uint256 price, uint256 maxSupply) external onlyRole(LISTER_ROLE) {
         if (sales[skillId].maxSupply != 0) revert SaleExists(skillId);
         if (maxSupply == 0) revert ZeroMaxSupply();
@@ -59,7 +60,7 @@ contract Marketplace is AccessControl {
         emit SaleCreated(skillId, price, maxSupply);
     }
 
-    /// @notice Beli `amount` unit skillId. Mint langsung ke pembeli.
+    /// @notice Buy `amount` units of a skillId. Mints directly to the buyer.
     function buy(uint256 skillId, uint256 amount) external payable {
         Sale storage sale = sales[skillId];
         if (sale.maxSupply == 0) revert SaleNotFound(skillId);
@@ -74,7 +75,7 @@ contract Marketplace is AccessControl {
         uint256 expected = sale.price * amount;
         if (msg.value != expected) revert WrongPayment(expected, msg.value);
 
-        // Checks-effects-interactions: state diupdate dulu sebelum external call mint.
+        // Checks-effects-interactions: update state before the external mint call.
         sale.minted = newMinted;
 
         collection.mint(msg.sender, skillId, amount);
@@ -82,22 +83,22 @@ contract Marketplace is AccessControl {
         emit Purchased(skillId, msg.sender, amount, msg.value);
     }
 
-    /// @notice Aktifkan/nonaktifkan sale (mis. pause drop).
+    /// @notice Enable/disable a sale (e.g. pause a drop).
     function setSaleActive(uint256 skillId, bool active) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (sales[skillId].maxSupply == 0) revert SaleNotFound(skillId);
         sales[skillId].active = active;
         emit SaleActiveSet(skillId, active);
     }
 
-    /// @notice Ubah alamat treasury tujuan withdraw.
+    /// @notice Update the treasury address withdrawals are sent to.
     function setTreasury(address newTreasury) external onlyRole(DEFAULT_ADMIN_ROLE) {
         if (newTreasury == address(0)) revert ZeroAddress();
         treasury = newTreasury;
         emit TreasuryUpdated(newTreasury);
     }
 
-    /// @notice Tarik seluruh saldo ETH kontrak ke treasury. Boleh dipanggil siapa pun,
-    /// dana tetap hanya bisa mengalir ke `treasury`.
+    /// @notice Withdraw the contract's entire ETH balance to the treasury.
+    /// Callable by anyone; funds can only ever flow to `treasury`.
     function withdraw() external {
         uint256 balance = address(this).balance;
         (bool ok,) = treasury.call{value: balance}("");
