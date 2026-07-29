@@ -128,6 +128,20 @@ Wiring role (dari `script/Deploy.s.sol`):
 | `Purchased(skillId, buyer, amount, paid)` | Marketplace | Trigger utama indexer — user beli skill, server refresh entitlement wallet tsb. |
 | `TransferSingle(operator, from, to, id, value)` / `TransferBatch(...)` | SkillCollection (ERC-1155 standard) | Transfer/mint/burn token — dasar indexer inventory & ownership real-time (termasuk transfer di marketplace sekunder). |
 
+## Live di GIWA Sepolia (chain 91342) — deployed & verified
+
+| Kontrak | Address |
+|---|---|
+| SkillRegistry | [`0xEb1d19B0d95b73Ef1A6e00B2D83f8F69999e2BD4`](https://sepolia-explorer.giwa.io/address/0xEb1d19B0d95b73Ef1A6e00B2D83f8F69999e2BD4) |
+| SkillFactory | [`0xa9F2f90b5275e217a8b76049fFF4A0c6EC8Ead0D`](https://sepolia-explorer.giwa.io/address/0xa9F2f90b5275e217a8b76049fFF4A0c6EC8Ead0D) |
+| SkillCollection | [`0x1204602e50af5d714Fc1A8c6d7EbFa01bEEC3B10`](https://sepolia-explorer.giwa.io/address/0x1204602e50af5d714Fc1A8c6d7EbFa01bEEC3B10) |
+| Marketplace | [`0x127b3d2F1b15720BAF6Df299b4e5E7f50c785c9d`](https://sepolia-explorer.giwa.io/address/0x127b3d2F1b15720BAF6Df299b4e5E7f50c785c9d) |
+
+Semua ter-verify di Blockscout. Katalog sudah di-seed 5 skill awal (id 1–5:
+WILD_DAUB, DOUBLE_CALL, GHOST_CALL, CELL_SWAP, NULLIFY — masing-masing supply
+1000, harga 0.0005 ETH) via `script/SeedSkills.s.sol`. Address juga tersedia
+machine-readable di `deployments/91342.json`.
+
 ## Deploy ke GIWA Sepolia
 
 1. Copy env: dari root repo, isi `.env` berdasar `.env.example` (`PRIVATE_KEY`,
