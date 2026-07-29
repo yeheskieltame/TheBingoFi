@@ -20,6 +20,7 @@ import { challengeNumber, playChallenge, shareCard } from "../daily/index.ts";
 import type { Board } from "../engine/index.ts";
 import { exampleQuests } from "../quest/index.ts";
 import { getLeaderboard, submitScore } from "./dailyLeaderboard.ts";
+import type { DailyPlayResponse, DailyTodayResponse } from "./protocol.ts";
 import { getProgress } from "./questStore.ts";
 
 const MAX_BODY_BYTES = 10 * 1024;
@@ -170,7 +171,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 
     if (method === "GET" && pathname === "/daily/today") {
       const date = parseDateParam(url.searchParams.get("date"));
-      ok(res, { number: challengeNumber(date), date });
+      ok(res, { number: challengeNumber(date), date } satisfies DailyTodayResponse);
       return;
     }
 
@@ -202,7 +203,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
         markedAtBingo: result.markedAtBingo,
         shareCard: shareCard(result, "id"),
         shareCardEn: shareCard(result, "en"),
-      });
+      } satisfies DailyPlayResponse);
       return;
     }
 

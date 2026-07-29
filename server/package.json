@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./protocol": "./src/api/protocol.ts"
+    "./protocol": "./src/api/protocol.ts",
+    "./engine": "./src/engine/index.ts"
   },
   "scripts": {
     "dev": "node --watch src/index.ts",

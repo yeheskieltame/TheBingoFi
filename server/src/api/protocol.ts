@@ -101,3 +101,39 @@ export interface ServerToClientEvents {
   "match:ended": (payload: MatchEndedPayload) => void;
   "quest:completed": (payload: QuestCompletedPayload) => void;
 }
+
+// -- HTTP JSON API (server/API.md section 2) ---------------------------------
+// Response shapes untuk endpoint HTTP, diturunkan langsung dari tipe internal
+// server (bukan ditulis ulang) supaya FE dan server tidak bisa drift diam-diam.
+
+import type { ChallengeResult } from "../daily/challenge.ts";
+import type { LeaderboardEntry } from "./dailyLeaderboard.ts";
+
+export type { ChallengeResult, LeaderboardEntry };
+export type {
+  QuestDef,
+  QuestFilter,
+  QuestProgress,
+  QuestReward,
+  QuestWindow,
+} from "../quest/quest.ts";
+
+/** Amplop semua response HTTP: { ok: true, data } | { ok: false, error }. */
+export type ApiEnvelope<T> =
+  | { readonly ok: true; readonly data: T }
+  | { readonly ok: false; readonly error: string };
+
+/** GET /daily/today */
+export interface DailyTodayResponse {
+  readonly number: number;
+  readonly date: string;
+}
+
+/** POST /daily/play — hasil challenge + share card dua bahasa. */
+export type DailyPlayResponse = ChallengeResult & {
+  readonly shareCard: string;
+  readonly shareCardEn: string;
+};
+
+/** GET /daily/leaderboard */
+export type DailyLeaderboardResponse = readonly LeaderboardEntry[];
