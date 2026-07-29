@@ -24,6 +24,11 @@ pnpm test:contracts   # forge test
 pnpm test:server          # node --test (game engine)
 ```
 
+## API untuk FE
+
+- `server/API.md` — kontrak lengkap: event Socket.IO (typed, import dari `@thebingofi/server/protocol`) + HTTP API (daily challenge, leaderboard, quests).
+- `contracts/abi/*.json` + `contracts/deployments/<chainId>.json` — ABI & address untuk wagmi/viem (lihat `contracts/README.md`).
+
 ## Deploy (GIWA Sepolia)
 
 Salin `.env.example` → `.env`, isi `PRIVATE_KEY` (jangan pernah commit), lalu:

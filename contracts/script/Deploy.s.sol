@@ -39,5 +39,34 @@ contract Deploy is Script {
         console.log("SkillCollection: ", address(collection));
         console.log("Marketplace:     ", address(marketplace));
         console.log("SkillFactory:    ", address(factory));
+
+        _writeDeploymentJson(registry, collection, marketplace, factory, treasury);
+    }
+
+    /// @notice Tulis alamat hasil deploy ke `deployments/<chainId>.json` supaya
+    /// FE/server tinggal baca file ini, tanpa hardcode address di kode.
+    /// Bukan bagian dari logic deploy — murni output artefak untuk konsumen off-chain.
+    function _writeDeploymentJson(
+        SkillRegistry registry,
+        SkillCollection collection,
+        Marketplace marketplace,
+        SkillFactory factory,
+        address treasury
+    ) internal {
+        string memory contractsKey = "contracts";
+        vm.serializeAddress(contractsKey, "SkillRegistry", address(registry));
+        vm.serializeAddress(contractsKey, "SkillFactory", address(factory));
+        vm.serializeAddress(contractsKey, "SkillCollection", address(collection));
+        string memory contractsJson = vm.serializeAddress(contractsKey, "Marketplace", address(marketplace));
+
+        string memory rootKey = "root";
+        vm.serializeUint(rootKey, "chainId", block.chainid);
+        vm.serializeString(rootKey, "contracts", contractsJson);
+        vm.serializeAddress(rootKey, "treasury", treasury);
+        string memory finalJson = vm.serializeUint(rootKey, "timestamp", block.timestamp);
+
+        string memory path = string.concat("deployments/", vm.toString(block.chainid), ".json");
+        vm.writeJson(finalJson, path);
+        console.log("Deployments JSON:", path);
     }
 }

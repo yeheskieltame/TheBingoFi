@@ -16,9 +16,22 @@
 import type { Server as NodeHttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
 
+import type {
+  Ack,
+  ClientToServerEvents,
+  DraftSubmitPayload,
+  EmptyAckData,
+  LobbyAckData,
+  MatchCallAckData,
+  MatchCallPayload,
+  RoomCreatePayload,
+  RoomJoinPayload,
+  RoomJoinedAckData,
+  ServerToClientEvents,
+} from "../api/protocol.ts";
+import { recordEvent } from "../api/questStore.ts";
 import type { MatchState } from "../engine/index.ts";
 import { eventsFromCall } from "../quest/events.ts";
-import { applyEvent, exampleQuests, type QuestProgress } from "../quest/quest.ts";
 import {
   callNumberInRoom,
   createRoom,
@@ -35,33 +48,17 @@ const MAX_NICKNAME_LENGTH = 24;
 const MAX_ROOM_CODE_LENGTH = 12;
 
 // -- wire types ---------------------------------------------------------
-
-type AckResponse = ({ readonly ok: true } & Record<string, unknown>) | { readonly ok: false; readonly error: string };
-type AckFn = (response: AckResponse) => void;
+//
+// ClientToServerEvents/ServerToClientEvents come from ../api/protocol.ts -
+// the ONE typed contract shared with FE (see server/package.json's
+// "./protocol" export). `new Server<ClientToServerEvents,
+// ServerToClientEvents>(...)` below means any mismatch between what a
+// handler actually sends/expects and what protocol.ts declares is a
+// compile error here, not a runtime surprise for FE.
 
 interface SocketData {
   roomCode?: string;
   playerId?: string;
-}
-
-interface ServerToClientEvents {
-  "room:state": (view: ReturnType<typeof lobbyView>) => void;
-  "match:state": (view: NonNullable<ReturnType<typeof matchViewFor>>) => void;
-  "match:ended": (payload: { winnerId: string | null; reason?: string }) => void;
-  "quest:completed": (payload: { questId: string; title: string }) => void;
-}
-
-// The client->server surface is untyped payload + ack on purpose: every
-// handler validates its own payload manually at the boundary (see the
-// validate* helpers below) rather than trusting a compile-time shape that
-// a malicious/buggy client can't actually be held to.
-interface ClientToServerEvents {
-  "room:create": (payload: unknown, cb: unknown) => void;
-  "room:join": (payload: unknown, cb: unknown) => void;
-  "room:leave": (payload: unknown, cb: unknown) => void;
-  "draft:start": (payload: unknown, cb: unknown) => void;
-  "draft:submit": (payload: unknown, cb: unknown) => void;
-  "match:call": (payload: unknown, cb: unknown) => void;
 }
 
 type RealtimeServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -110,17 +107,19 @@ function validateCalledNumber(value: unknown): number {
 }
 
 /**
- * Wraps a handler so a bad/unexpected payload (wrong type, missing ack,
- * or a thrown Error from downstream logic) always turns into
- * `ack({ ok: false, error })` instead of an uncaught exception - Socket.IO
- * event listeners don't catch synchronous throws for you, and one bad
- * payload should never take the whole server down.
+ * Wraps a handler so a bad/unexpected payload (wrong shape despite what the
+ * protocol type promises, missing ack, or a thrown Error from downstream
+ * logic) always turns into `ack({ ok: false, error })` instead of an
+ * uncaught exception - Socket.IO event listeners don't catch synchronous
+ * throws for you, and one bad payload should never take the whole server
+ * down. `P`/`R` tie this to the exact payload/ack-data types protocol.ts
+ * declares for the event being wrapped.
  */
-function safeHandler<P>(handler: (payload: P, ack: AckFn) => void): (payload: unknown, ack: unknown) => void {
+function safeHandler<P, R>(handler: (payload: P, ack: Ack<R>) => void): (payload: P, ack: Ack<R>) => void {
   return (payload, ack) => {
-    const send: AckFn = typeof ack === "function" ? (ack as AckFn) : () => {};
+    const send: Ack<R> = typeof ack === "function" ? ack : (() => {}) as Ack<R>;
     try {
-      handler(payload as P, send);
+      handler(payload, send);
     } catch (err) {
       send({ ok: false, error: err instanceof Error ? err.message : "Unexpected server error" });
     }
@@ -197,10 +196,11 @@ function applyExitResult(
   if (result.room) broadcastLobby(io, result.room);
 }
 
-// -- quest progress (in-memory, per player) ------------------------------
-// // ponytail: progress in-memory, pindah ke DB bareng persistence.
-
-const questProgressByPlayer = new Map<string, QuestProgress[]>();
+// -- quest progress -----------------------------------------------------
+//
+// Progress itself lives in ../api/questStore.ts, shared with the HTTP API's
+// GET /quests/progress/:playerId - this is just the realtime-side glue that
+// turns a match transition into events and broadcasts newly-completed quests.
 
 function processQuestEvents(io: RealtimeServer, prevMatch: MatchState, nextMatch: MatchState): void {
   const events = eventsFromCall(prevMatch, nextMatch);
@@ -208,10 +208,7 @@ function processQuestEvents(io: RealtimeServer, prevMatch: MatchState, nextMatch
 
   const dateISO = new Date().toISOString().slice(0, 10);
   for (const event of events) {
-    const progress = questProgressByPlayer.get(event.playerId) ?? [];
-    const result = applyEvent(exampleQuests, progress, event, { dateISO });
-    questProgressByPlayer.set(event.playerId, result.progress);
-
+    const result = recordEvent(event, dateISO);
     for (const quest of result.completed) {
       io.to(playerChannel(event.playerId)).emit("quest:completed", { questId: quest.id, title: quest.title });
     }
@@ -228,7 +225,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer): RealtimeServer
   io.on("connection", (socket) => {
     socket.on(
       "room:create",
-      safeHandler<{ nickname?: unknown }>((payload, ack) => {
+      safeHandler<RoomCreatePayload, RoomJoinedAckData>((payload, ack) => {
         const nickname = validateNickname(payload?.nickname);
         const { room, playerId } = createRoom(nickname);
         joinSocketToRoom(socket, room.code, playerId);
@@ -238,7 +235,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer): RealtimeServer
 
     socket.on(
       "room:join",
-      safeHandler<{ code?: unknown; nickname?: unknown }>((payload, ack) => {
+      safeHandler<RoomJoinPayload, RoomJoinedAckData>((payload, ack) => {
         const code = validateRoomCode(payload?.code);
         const nickname = validateNickname(payload?.nickname);
         const { room, playerId } = joinRoom(code, nickname);
@@ -250,7 +247,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer): RealtimeServer
 
     socket.on(
       "room:leave",
-      safeHandler<unknown>((_payload, ack) => {
+      safeHandler<EmptyAckData, EmptyAckData>((_payload, ack) => {
         const ctx = requireSocketRoom(socket);
         const result = exitRoom(ctx.roomCode, ctx.playerId);
         clearSocketRoom(socket);
@@ -261,7 +258,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer): RealtimeServer
 
     socket.on(
       "draft:start",
-      safeHandler<unknown>((_payload, ack) => {
+      safeHandler<EmptyAckData, LobbyAckData>((_payload, ack) => {
         const ctx = requireSocketRoom(socket);
         const room = startDraft(ctx.roomCode, ctx.playerId);
         ack({ ok: true, view: lobbyView(room) });
@@ -271,7 +268,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer): RealtimeServer
 
     socket.on(
       "draft:submit",
-      safeHandler<{ numbers?: unknown }>((payload, ack) => {
+      safeHandler<DraftSubmitPayload, LobbyAckData>((payload, ack) => {
         const ctx = requireSocketRoom(socket);
         const numbers = validateNumbersArray(payload?.numbers);
         const room = submitBoard(ctx.roomCode, ctx.playerId, numbers);
@@ -283,7 +280,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer): RealtimeServer
 
     socket.on(
       "match:call",
-      safeHandler<{ number?: unknown }>((payload, ack) => {
+      safeHandler<MatchCallPayload, MatchCallAckData>((payload, ack) => {
         const ctx = requireSocketRoom(socket);
         const number = validateCalledNumber(payload?.number);
 
@@ -298,7 +295,15 @@ export function createRealtimeServer(httpServer: NodeHttpServer): RealtimeServer
         }
 
         const updatedRoom = result.room;
-        ack({ ok: true, view: matchViewFor(updatedRoom, ctx.playerId) });
+        const view = matchViewFor(updatedRoom, ctx.playerId);
+        if (!view) {
+          // Unreachable in practice: callNumberInRoom only succeeds when
+          // updatedRoom has a match and ctx.playerId is one of its players,
+          // which is exactly what matchViewFor needs to return a view.
+          ack({ ok: false, error: "Match state unavailable" });
+          return;
+        }
+        ack({ ok: true, view });
         broadcastMatchState(io, updatedRoom);
 
         if (prevMatch && updatedRoom.match) {

@@ -19,3 +19,8 @@ contracts/broadcast/**/dry-run/
 
 # misc
 .DS_Store
+
+# artefak anvil lokal (test integrasi)
+contracts/deployments/31337.json
+contracts/broadcast/**/31337/
+contracts/cache/**/31337/
