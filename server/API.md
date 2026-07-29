@@ -77,15 +77,19 @@ socket.emit("room:create", { nickname: "Alice" }, (res) => {
 | `wallet:nonce` | `{}` | `{ nonce: string, message: string }` | Minta nonce baru untuk di-sign (lihat "Wallet link" di bawah). Boleh dipanggil sebelum atau sesudah join room. |
 | `wallet:link` | `{ address: string, signature: string }` | `{ address: string }` | Verifikasi signature vs nonce terakhir yang diminta socket ini, lalu tautkan wallet (lihat "Wallet link" di bawah). |
 | `loadout:set` | `{ skillIds: number[] }` | `{ view: LobbyView }` | Set loadout (0-2 skill id unik) — hanya room `mode: "standard"`, fase `lobby`/`draft`, wajib sudah `wallet:link` (lihat "Mode room & Loadout" di bawah). |
+| `skill:use` | `{ effectType: string, args?: { cellIndex?: number, a?: number, b?: number } }` | `{ view: MatchView }` | Pakai 1 skill dari loadout sendiri saat giliran sendiri. Lihat "Skill in-match" di bawah. |
+| `skill:respond` | `{ nullify: boolean }` | `{ view: MatchView }` | Jawab window Nullify (`true` = batalkan skill lawan, `false` = biarkan). Lihat "Skill in-match" di bawah. |
 
 ### Tabel event: server → client
 
 | Event | Payload | Kapan dikirim |
 |---|---|---|
 | `room:state` | `LobbyView` | Broadcast ke semua socket di room setiap kali state lobby/draft berubah (join, start draft, submit board, wallet:link, loadout:set). |
-| `match:state` | `MatchView` | Broadcast **per-viewer** (lihat di bawah) setiap kali ada `match:call` sukses, dan sekali saat room baru pindah ke `playing`. |
-| `match:ended` | `{ winnerId: string \| null, reason?: string }` | Match selesai — baik karena menang (`winnerId` terisi) maupun aborted karena pemain keluar/disconnect (`winnerId: null`, `reason: "player_left" \| "player_disconnected"`). |
-| `quest:completed` | `{ questId: string, title: string }` | Dikirim ke **socket milik pemain itu saja** (bukan broadcast room) setiap kali quest pemain itu baru saja selesai. |
+| `match:state` | `MatchView` | Broadcast **per-viewer** (lihat di bawah) setiap kali ada `match:call`/`skill:use`/`skill:respond` sukses, dan sekali saat room baru pindah ke `playing`. |
+| `match:ended` | `{ winnerId: string \| null, reason?: string }` | Match selesai — baik karena menang (`winnerId` terisi, termasuk menang lewat efek skill) maupun aborted karena pemain keluar/disconnect (`winnerId: null`, `reason: "player_left" \| "player_disconnected"`). |
+| `quest:completed` | `{ questId: string, title: string }` | Dikirim ke **socket milik pemain itu saja** (bukan broadcast room) setiap kali quest pemain itu baru saja selesai — termasuk quest bertipe `skill_used`. |
+| `skill:pending` | `{ playerId: string, effectType: string, awaiting: string[] }` | Broadcast ke room saat sebuah skill use membuka window Nullify (sekali, saat window terbuka — lihat "Skill in-match" di bawah). |
+| `skill:resolved` | `{ playerId: string, effectType: string, nullified: boolean, nullifiedBy?: string }` | Broadcast ke room saat skill yang pending selesai — dibatalkan (`nullified: true`, `nullifiedBy` terisi) atau berhasil (`nullified: false`), termasuk saat window 15 detik habis tanpa jawaban. |
 
 ### `LobbyView`
 
@@ -128,10 +132,24 @@ interface MatchView {
     playerId: string;
     nickname: string;
     connected: boolean;
-    lineCount: number;      // jumlah garis selesai lawan, TANPA bocorkan board-nya
+    lineCount: number;      // jumlah garis selesai (ghost+daub VIEWER itu sendiri ikut kehitung), TANPA bocorkan board-nya
   }[];
+
+  // -- skill state, lihat "Skill in-match" di bawah --
+
+  loadout?: { effectType: string, chargesLeft: number }[]; // loadout VIEWER sendiri saja, tidak pernah untuk pemain lain
+  daubedCells?: number[];   // sel yang di-Wild-Daub VIEWER sendiri (indeks 0-24), tidak pernah untuk pemain lain
+  ghostNumbers?: number[];  // angka yang di-Ghost-Call VIEWER sendiri, tidak pernah untuk pemain lain
+  pendingSkill?: { playerId: string, effectType: string, awaiting: string[] }; // publik — skill yang sedang menunggu keputusan Nullify, kalau ada
+  myTurnArmed?: { double?: { callsLeft: number }, ghost?: boolean }; // hanya terisi kalau VIEWER sendiri yang sedang punya Double/Ghost Call armed
 }
 ```
+
+`loadout`/`daubedCells`/`ghostNumbers` ikut kaidah redaksi board: **HANYA**
+milik viewer sendiri. `pendingSkill` publik (siapa pakai skill apa, siapa
+masih perlu jawab) tapi TIDAK PERNAH menyertakan `args` skill itu (mis.
+`cellIndex` Wild Daub) — itu sudah cukup untuk render banner "opponent used
+X, respond?" tanpa membocorkan detail board.
 
 ### Flow lengkap: create → join → draft → main → selesai
 
@@ -241,11 +259,12 @@ socket.emit("wallet:nonce", {}, async (res) => {
 - Pemain yang TIDAK set loadout tetap boleh `draft:submit`/main seperti
   biasa — free player tetap kompetitif (CLAUDE.md), main "polos" tanpa
   skill.
-- **CATATAN implementasi**: langkah ini baru sampai "loadout terverifikasi
-  on-chain tersimpan di state match" (`LobbyView.players[].loadout`).
-  Eksekusi efek skill sungguhan saat match berjalan (Wild Daub, Double
-  Call, Ghost Call, Cell Swap, Nullify) BELUM ada — itu bagian engine skill
-  system, CLAUDE.md langkah 5, menyusul.
+- Begitu SEMUA pemain sudah submit board (room pindah ke `playing`), server
+  meresolve tiap `skillIds` on-chain yang tersimpan jadi charge nyata untuk
+  match itu: `chargesLeft` di-set dari registry-nya masing-masing skill,
+  bukan dari `loadout:set` (lihat "Skill in-match" di bawah untuk bentuk
+  loadout yang dipakai selama match). Pemain yang tidak set loadout mulai
+  match tanpa skill sama sekali, sama seperti room `casual`.
 
 ```ts
 // Flow standard room ringkas (asumsi sudah wallet:link)
@@ -260,6 +279,83 @@ socket.emit("room:create", { nickname: "Host", mode: "standard" }, (res) => {
 
   // draft:start / draft:submit / match:call seperti biasa — pemain lain
   // boleh join tanpa loadout dan tetap main.
+});
+```
+
+### Skill in-match
+
+Begitu match `playing`, tiap pemain dengan loadout (lihat "Mode room &
+Loadout" di atas) bisa memakai skillnya lewat `skill:use` — dieksekusi
+sepenuhnya di engine server (CLAUDE.md: "Efek skill dieksekusi di GAME
+SERVER, bukan on-chain"), bukan tebakan client. 5 skill (CONCEPT.md §3):
+
+| effectType | args | Efek | Buka window Nullify? |
+|---|---|---|---|
+| `WILD_DAUB` | `{ cellIndex }` (0-24) | Tandai 1 sel milik sendiri tanpa perlu dipanggil. | Ya |
+| `DOUBLE_CALL` | — | Giliran ini memanggil 2 angka, bukan 1. | Ya |
+| `GHOST_CALL` | — | Panggilan berikutnya hanya tertandai di board sendiri (tidak masuk `calledNumbers` bersama). | Ya |
+| `CELL_SWAP` | `{ a, b }` (0-24, beda) | Tukar angka di 2 sel board sendiri. | **Tidak** — selalu langsung resolve. |
+| `NULLIFY` | — | Tidak dipakai lewat `skill:use` — hanya reaksi via `skill:respond`. | — |
+
+**Flow: `skill:use` → (window Nullify, kalau ada lawan pemegang NULLIFY) →
+resolve.**
+
+1. **`skill:use { effectType, args? }`** — hanya valid saat giliran pemanggil
+   sendiri, belum pakai skill lain giliran ini, dan pemanggil punya charge
+   tersisa untuk `effectType` itu. `args` divalidasi ulang di server sesuai
+   `effectType` (lihat tabel di atas) — apa pun yang dikirim client tidak
+   pernah dipercaya mentah-mentah. Charge langsung terpakai begitu
+   `skill:use` sukses, terlepas dari hasil Nullify nanti.
+   - **CELL_SWAP**: langsung resolve, ack `{ view }` sudah mencerminkan
+     board yang sudah ditukar. `skill:resolved { nullified: false }` juga
+     langsung terbit.
+   - **WILD_DAUB/DOUBLE_CALL/GHOST_CALL**: kalau ADA lawan yang memegang
+     charge NULLIFY, window Nullify terbuka — `MatchView.pendingSkill`
+     terisi, `skill:pending { playerId, effectType, awaiting }` di-broadcast
+     sekali ke seluruh room (`awaiting` = id semua lawan yang bisa
+     Nullify). Kalau TIDAK ADA lawan seperti itu, langsung resolve seperti
+     CELL_SWAP.
+2. **`skill:respond { nullify }`** — hanya valid dari pemain yang ada di
+   `pendingSkill.awaiting`.
+   - `nullify: true` — pakai charge NULLIFY milik responder, skill yang
+     pending DIBATALKAN (efeknya tidak pernah terjadi; charge si pemakai
+     awal TETAP terpakai, tidak di-refund). `skill:resolved { nullified:
+     true, nullifiedBy: <responder> }` di-broadcast.
+   - `nullify: false` ("Biarkan") — responder keluar dari `awaiting`. Begitu
+     `awaiting` kosong (semua sudah jawab), skill resolve normal —
+     `skill:resolved { nullified: false }`.
+3. **Window timeout (15 detik)** — kalau ada lawan di `awaiting` yang tidak
+   pernah kirim `skill:respond`, server otomatis "Biarkan"-kan (`nullify:
+   false`) untuk MEREKA SEMUA begitu 15 detik berlalu sejak window terbuka,
+   supaya lawan yang AFK/diam tidak bisa mengunci match selamanya. Sama
+   seperti resolve normal — `skill:resolved { nullified: false }` tetap
+   terbit. (Nilai ini configurable di level server lewat opsi internal
+   `nullifyTimeoutMs` — dipakai test, bukan sesuatu yang FE atur.)
+
+Setiap kali sebuah skill benar-benar resolve (bukan di-Nullify): quest event
+`skill_used { playerId, effectType }` ikut tercatat (bisa memicu
+`quest:completed` kalau ada quest yang match), dan garis/menang yang
+terjadi lewat efek skill (mis. Wild Daub menyelesaikan garis ke-5) memicu
+`match:ended` persis seperti menang lewat `match:call` biasa.
+
+```ts
+// Wild Daub sendiri, tunggu window Nullify kalau ada
+socket.emit("skill:use", { effectType: "WILD_DAUB", args: { cellIndex: 12 } }, (res) => {
+  if (!res.ok) return console.error(res.error); // mis. bukan giliran sendiri, charge habis
+  // res.view.pendingSkill terisi kalau ada lawan yang bisa Nullify - tunggu skill:resolved
+});
+
+socket.on("skill:pending", ({ playerId, effectType, awaiting }) => {
+  // tampilkan banner "opponent used X" ke pemain di `awaiting`
+});
+
+// Sebagai lawan yang diminta menjawab:
+socket.emit("skill:respond", { nullify: true }, (res) => {
+  if (!res.ok) return console.error(res.error);
+});
+
+socket.on("skill:resolved", ({ playerId, effectType, nullified, nullifiedBy }) => {
+  // toast riwayat singkat di UI
 });
 ```
 
@@ -437,6 +533,17 @@ Demikian juga `realtime/server.ts`'s `LoadoutVerifier` — interface tipis
 `(owner, skillIds) => Promise<{ valid, reason? }>` yang cocok secara
 struktural dengan `verifyLoadout`, jadi bisa di-mock total di test tanpa
 menyentuh chain sama sekali (lihat `realtime.test.ts`).
+
+**`resolveLoadout`** (skillIds → charge nyata saat match mulai, lihat
+"Skill in-match" di atas) adalah DI terpisah dengan pola yang sama:
+`createRealtimeServer(httpServer, { verifyLoadout, resolveLoadout })`.
+Produksinya dibangun langsung di `server/src/index.ts`
+(`createDefaultLoadoutResolver`, bukan di `chain/`) — baca
+`SkillRegistry.getSkill` per skill id via `chain/reader.ts`'s `getCatalog`,
+di-cache module-level (Map) sekali per proses server supaya `draft:submit`
+tidak perlu round-trip RPC berulang. Absen (chain belum dikonfigurasi, atau
+pemain memang tidak set loadout) berarti pemain itu mulai match tanpa skill
+sama sekali — bukan match start gagal.
 
 Test: `server/src/chain/reader.test.ts` (unit, `node --test` biasa) +
 `server/src/chain/defaultVerifier.test.ts` (unit, resolusi env/file tanpa

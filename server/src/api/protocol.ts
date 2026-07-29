@@ -20,12 +20,15 @@
  */
 
 import type { LobbyView, MatchView } from "../realtime/views.ts";
+import type { SkillArgs } from "../engine/match.ts";
 
 export type {
   LobbyPlayerView,
   LobbyView,
   MatchPlayerPublicView,
   MatchView,
+  MyTurnArmedView,
+  PendingSkillView,
 } from "../realtime/views.ts";
 
 /**
@@ -90,6 +93,32 @@ export interface LoadoutSetPayload {
   readonly skillIds: readonly number[];
 }
 
+/**
+ * Uses one skill from the caller's own loadout - see server/API.md's "Skill
+ * in-match" section. `effectType` must match one of the caller's loadout
+ * entries with an available charge (WILD_DAUB/DOUBLE_CALL/GHOST_CALL/
+ * CELL_SWAP - NULLIFY is reaction-only, see SkillRespondPayload). `args`
+ * shape depends on effectType (WILD_DAUB needs `cellIndex`, CELL_SWAP needs
+ * `a`/`b`, DOUBLE_CALL/GHOST_CALL need neither) - see engine/skills.ts's
+ * validateSkillArgs for the authoritative rules, re-validated server-side
+ * regardless of what the client sends.
+ */
+export interface SkillUsePayload {
+  readonly effectType: string;
+  readonly args?: SkillArgs;
+}
+
+/**
+ * Answers an open Nullify window for a pending skill (see
+ * SkillPendingPayload) - only valid from a player listed in that skill's
+ * `awaiting`. `nullify: true` spends the responder's own NULLIFY charge and
+ * cancels the pending skill outright; `false` just lets it through (once
+ * everyone in `awaiting` has done so, the skill resolves).
+ */
+export interface SkillRespondPayload {
+  readonly nullify: boolean;
+}
+
 // -- client -> server ack data ----------------------------------------------
 
 export interface RoomJoinedAckData {
@@ -130,6 +159,10 @@ export interface ClientToServerEvents {
   "wallet:link": (payload: WalletLinkPayload, ack: Ack<WalletLinkAckData>) => void;
   /** Sets (or clears, with []) the caller's loadout - "standard" mode, lobby/draft phase, wallet-linked only. */
   "loadout:set": (payload: LoadoutSetPayload, ack: Ack<LobbyAckData>) => void;
+  /** Uses a skill from the caller's own loadout - see server/API.md's "Skill in-match" section. */
+  "skill:use": (payload: SkillUsePayload, ack: Ack<MatchCallAckData>) => void;
+  /** Answers an open Nullify window for a pending skill - true to Nullify (cancel it), false to pass. */
+  "skill:respond": (payload: SkillRespondPayload, ack: Ack<MatchCallAckData>) => void;
 }
 
 // -- server -> client events -------------------------------------------------
@@ -144,11 +177,41 @@ export interface QuestCompletedPayload {
   readonly title: string;
 }
 
+/**
+ * A skill use just opened a Nullify window - broadcast to the whole room
+ * once, when the window opens (see server/API.md's "Skill in-match"
+ * section). `awaiting` narrows over time as opponents respond, but that
+ * narrowing itself is only observable via `match:state`'s
+ * `MatchView.pendingSkill` (per-viewer broadcasts already cover it), not a
+ * repeat of this event.
+ */
+export interface SkillPendingPayload {
+  readonly playerId: string;
+  readonly effectType: string;
+  readonly awaiting: readonly string[];
+}
+
+/**
+ * A pending skill has resolved - either Nullified by an opponent
+ * (`nullified: true`, `nullifiedBy` set) or gone through, either because no
+ * Nullify-capable opponent existed, CELL_SWAP (never opens a window), every
+ * `awaiting` opponent passed, or the 15s window timed out (see
+ * server/API.md's "Skill in-match" section).
+ */
+export interface SkillResolvedPayload {
+  readonly playerId: string;
+  readonly effectType: string;
+  readonly nullified: boolean;
+  readonly nullifiedBy?: string;
+}
+
 export interface ServerToClientEvents {
   "room:state": (view: LobbyView) => void;
   "match:state": (view: MatchView) => void;
   "match:ended": (payload: MatchEndedPayload) => void;
   "quest:completed": (payload: QuestCompletedPayload) => void;
+  "skill:pending": (payload: SkillPendingPayload) => void;
+  "skill:resolved": (payload: SkillResolvedPayload) => void;
 }
 
 // -- HTTP JSON API (server/API.md section 2) ---------------------------------

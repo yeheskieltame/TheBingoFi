@@ -6,8 +6,8 @@
  * few fields".
  */
 
-import { countCompletedLines } from "../engine/index.ts";
-import type { Board } from "../engine/index.ts";
+import { countCompletedLinesForPlayer } from "../engine/index.ts";
+import type { Board, SkillInstance } from "../engine/index.ts";
 import type { Room, RoomMode, RoomPhase } from "./rooms.ts";
 
 export interface LobbyPlayerView {
@@ -58,6 +58,19 @@ export interface MatchPlayerPublicView {
   readonly lineCount: number;
 }
 
+/** Public: which skill use is currently awaiting Nullify decisions, and from whom - see skill:pending/skill:respond. Never carries `args` (e.g. WILD_DAUB's cellIndex), only what CLAUDE.md's socket spec lists. */
+export interface PendingSkillView {
+  readonly playerId: string;
+  readonly effectType: string;
+  readonly awaiting: readonly string[];
+}
+
+/** Set only for the viewer who currently has Double Call/Ghost Call armed for their own upcoming call(s) on this turn - see engine/match.ts's ArmedState. */
+export interface MyTurnArmedView {
+  readonly double?: { readonly callsLeft: number };
+  readonly ghost?: boolean;
+}
+
 export interface MatchView {
   readonly code: string;
   readonly status: "in_progress" | "finished";
@@ -67,12 +80,27 @@ export interface MatchView {
   /** The viewer's OWN board only. Every other player's board is omitted entirely. */
   readonly board?: Board;
   readonly players: readonly MatchPlayerPublicView[];
+  /** The viewer's OWN loadout (effectType + remaining charges) only - never sent for other players. */
+  readonly loadout?: readonly SkillInstance[];
+  /** The viewer's OWN Wild-Daubed cell indices only - never sent for other players. */
+  readonly daubedCells?: readonly number[];
+  /** The viewer's OWN Ghost-Called numbers only - never sent for other players. */
+  readonly ghostNumbers?: readonly number[];
+  /** A skill use awaiting Nullify decisions, if any - public, see PendingSkillView. */
+  readonly pendingSkill?: PendingSkillView;
+  /** Double/Ghost Call armed for the viewer's own turn, if any - see MyTurnArmedView. */
+  readonly myTurnArmed?: MyTurnArmedView;
 }
 
 /**
  * Per-viewer match state: public info (called numbers, whose turn, line
- * counts, status/winner) plus the viewer's own board - nobody else's.
- * Returns undefined if the room has no match yet (still in lobby/draft).
+ * counts, status/winner, pending skill) plus the viewer's own board and
+ * skill state (loadout, daubed cells, ghost numbers) - nobody else's. Line
+ * counts use countCompletedLinesForPlayer (each player's own ghost/daub
+ * marks count toward their own lines - see engine/lines.ts) rather than the
+ * plain calledNumbers-only countCompletedLines, so a skill-completed line
+ * shows up in the public lineCount same as an ordinary call would. Returns
+ * undefined if the room has no match yet (still in lobby/draft).
  */
 export function matchViewFor(room: Room, viewerId: string): MatchView | undefined {
   const match = room.match;
@@ -83,13 +111,25 @@ export function matchViewFor(room: Room, viewerId: string): MatchView | undefine
 
   const players = match.players.map((matchPlayer) => {
     const roomPlayer = room.players.find((p) => p.playerId === matchPlayer.id);
+    const ghostSet = new Set(matchPlayer.ghostNumbers ?? []);
     return {
       playerId: matchPlayer.id,
       nickname: roomPlayer?.nickname ?? "",
       connected: roomPlayer?.connected ?? false,
-      lineCount: countCompletedLines(matchPlayer.board, calledSet),
+      lineCount: countCompletedLinesForPlayer(matchPlayer.board, calledSet, ghostSet, matchPlayer.daubedCells ?? []),
     };
   });
+
+  const pendingSkill: PendingSkillView | undefined = match.pendingSkill
+    ? {
+        playerId: match.pendingSkill.playerId,
+        effectType: match.pendingSkill.effectType,
+        awaiting: match.pendingSkill.awaiting,
+      }
+    : undefined;
+
+  const myTurnArmed: MyTurnArmedView | undefined =
+    match.armed?.playerId === viewerId ? { double: match.armed.double, ghost: match.armed.ghost } : undefined;
 
   return {
     code: room.code,
@@ -100,5 +140,10 @@ export function matchViewFor(room: Room, viewerId: string): MatchView | undefine
     winnerId: match.winnerId,
     board: viewerMatchPlayer?.board,
     players,
+    loadout: viewerMatchPlayer?.loadout,
+    daubedCells: viewerMatchPlayer?.daubedCells,
+    ghostNumbers: viewerMatchPlayer?.ghostNumbers,
+    pendingSkill,
+    myTurnArmed,
   };
 }

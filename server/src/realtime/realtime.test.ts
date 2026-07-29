@@ -15,7 +15,7 @@ import type { AddressInfo } from "node:net";
 import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 
-import { BOARD_SIZE } from "../engine/index.ts";
+import { BOARD_SIZE, NULLIFY, WILD_DAUB, type SkillInstance } from "../engine/index.ts";
 import { exampleQuests } from "../quest/index.ts";
 import { createRealtimeServer, type LoadoutVerifier, type RealtimeServerOptions } from "./server.ts";
 
@@ -622,5 +622,286 @@ test("a player without a loadout can still draft and play a full match in a stan
 
     const callRes = await emit(host, "match:call", { number: 1 });
     assert.equal(callRes.ok, true);
+  });
+});
+
+// -- skills (in-match) ------------------------------------------------------
+//
+// A "standard" room with a mock resolveLoadout (skillId -> SkillInstance,
+// see rooms.ts's submitBoard/SubmitBoardOptions and CLAUDE.md step 1) so a
+// match actually starts with real skill charges attached, then drives
+// skill:use/skill:respond over the socket the same way a browser client
+// would. skillId 1 -> WILD_DAUB, skillId 2 -> NULLIFY.
+
+const SKILL_CATALOG: Record<number, SkillInstance> = {
+  1: { effectType: WILD_DAUB, chargesLeft: 2 },
+  2: { effectType: NULLIFY, chargesLeft: 1 },
+};
+
+const mockResolveLoadout = async (skillIds: readonly number[]): Promise<SkillInstance[]> =>
+  skillIds.map((id) => SKILL_CATALOG[id]!);
+
+interface SkillMatchSetup {
+  readonly host: ClientSocket;
+  readonly guest: ClientSocket;
+  readonly hostId: string;
+  readonly guestId: string;
+}
+
+/**
+ * A "standard" mode 2-player match already through draft: host holds
+ * `hostSkillIds`, guest holds `guestSkillIds` (both resolved through
+ * mockResolveLoadout above). Boards are identityBoard (host) / shiftedBoard
+ * (guest) - same as setupTwoPlayerMatch, so calling 1..20 alternately
+ * (host on odds, guest on evens) leaves both players just short of 5 lines,
+ * same math the win-via-skill test below relies on.
+ */
+async function setupStandardSkillMatch(
+  connect: () => Promise<ClientSocket>,
+  hostSkillIds: readonly number[],
+  guestSkillIds: readonly number[],
+): Promise<SkillMatchSetup> {
+  const host = await connect();
+  const guest = await connect();
+
+  await linkWallet(host, privateKeyToAccount(generatePrivateKey()));
+  await linkWallet(guest, privateKeyToAccount(generatePrivateKey()));
+
+  const created = await emit(host, "room:create", { nickname: "Host", mode: "standard" });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error("unreachable");
+  const code = created.code as string;
+  const hostId = created.playerId as string;
+
+  const joined = await emit(guest, "room:join", { code, nickname: "Guest" });
+  assert.equal(joined.ok, true);
+  if (!joined.ok) throw new Error("unreachable");
+  const guestId = joined.playerId as string;
+
+  if (hostSkillIds.length > 0) {
+    const res = await emit(host, "loadout:set", { skillIds: hostSkillIds });
+    assert.equal(res.ok, true, `host loadout:set should succeed: ${JSON.stringify(res)}`);
+  }
+  if (guestSkillIds.length > 0) {
+    const res = await emit(guest, "loadout:set", { skillIds: guestSkillIds });
+    assert.equal(res.ok, true, `guest loadout:set should succeed: ${JSON.stringify(res)}`);
+  }
+
+  await emit(host, "draft:start", {});
+  const hostSubmit = await emit(host, "draft:submit", { numbers: identityBoard() });
+  assert.equal(hostSubmit.ok, true);
+  const guestSubmit = await emit(guest, "draft:submit", { numbers: shiftedBoard() });
+  assert.equal(guestSubmit.ok, true);
+
+  return { host, guest, hostId, guestId };
+}
+
+test("skill:use WILD_DAUB resolves immediately when no opponent holds NULLIFY, and never leaks into the opponent's match:state", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer({ verifyLoadout, resolveLoadout: mockResolveLoadout }, async ({ connect }) => {
+    const { host, guest, hostId } = await setupStandardSkillMatch(connect, [1], []); // guest: no loadout at all
+
+    // Attached before triggering skill:use, so it can't miss the broadcast - see setupTwoPlayerMatch's comment.
+    const guestMatchState = waitForEvent<{ daubedCells?: number[]; players: Record<string, unknown>[] }>(
+      guest,
+      "match:state",
+    );
+    const resolvedPromise = waitForEvent<{ playerId: string; effectType: string; nullified: boolean }>(
+      host,
+      "skill:resolved",
+    );
+
+    const useRes = await emit(host, "skill:use", { effectType: WILD_DAUB, args: { cellIndex: 0 } });
+    assert.equal(useRes.ok, true, `expected success, got: ${JSON.stringify(useRes)}`);
+    if (!useRes.ok) throw new Error("unreachable");
+    const hostView = useRes.view as { daubedCells?: number[]; pendingSkill?: unknown };
+    assert.deepEqual(hostView.daubedCells, [0]);
+    assert.equal(hostView.pendingSkill, undefined, "no Nullify-capable opponent - resolves immediately");
+
+    const resolved = await resolvedPromise;
+    assert.deepEqual(resolved, { playerId: hostId, effectType: WILD_DAUB, nullified: false });
+
+    const guestView = await guestMatchState;
+    assert.ok(
+      guestView.daubedCells === undefined || guestView.daubedCells.length === 0,
+      "guest's OWN daubedCells is empty - they never used Wild Daub",
+    );
+    for (const player of guestView.players) {
+      assert.equal("daubedCells" in player, false, "opponents' daubedCells must never appear in players[]");
+      assert.equal("ghostNumbers" in player, false, "opponents' ghostNumbers must never appear in players[]");
+    }
+  });
+});
+
+test("skill:use opens a Nullify window when an opponent holds NULLIFY; skill:respond nullify:true cancels it", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer({ verifyLoadout, resolveLoadout: mockResolveLoadout }, async ({ connect }) => {
+    const { host, guest, hostId, guestId } = await setupStandardSkillMatch(connect, [1], [2]);
+
+    // Persistent (not `.once`) collector attached before skill:use, so it
+    // can't race against that first broadcast (pendingSkill set) still
+    // being in flight when we'd otherwise attach a fresh listener right
+    // before skill:respond - see the timeout test's comment for the same
+    // hazard. Reading the LAST entry once skill:resolved has fired always
+    // reflects skill:respond's own resolution, not the earlier one.
+    const hostMatchStates: { daubedCells?: number[]; pendingSkill?: unknown }[] = [];
+    host.on("match:state", (view: { daubedCells?: number[]; pendingSkill?: unknown }) => hostMatchStates.push(view));
+    const pendingPromise = waitForEvent<{ playerId: string; effectType: string; awaiting: string[] }>(
+      guest,
+      "skill:pending",
+    );
+
+    const useRes = await emit(host, "skill:use", { effectType: WILD_DAUB, args: { cellIndex: 0 } });
+    assert.equal(useRes.ok, true);
+    if (!useRes.ok) throw new Error("unreachable");
+    const hostViewAfterUse = useRes.view as {
+      pendingSkill?: { playerId: string; effectType: string; awaiting: string[] };
+    };
+    assert.deepEqual(hostViewAfterUse.pendingSkill, { playerId: hostId, effectType: WILD_DAUB, awaiting: [guestId] });
+
+    const pending = await pendingPromise;
+    assert.deepEqual(pending, { playerId: hostId, effectType: WILD_DAUB, awaiting: [guestId] });
+
+    const resolvedPromise = waitForEvent<{
+      playerId: string;
+      effectType: string;
+      nullified: boolean;
+      nullifiedBy?: string;
+    }>(host, "skill:resolved");
+    const respondRes = await emit(guest, "skill:respond", { nullify: true });
+    assert.equal(respondRes.ok, true, `expected success, got: ${JSON.stringify(respondRes)}`);
+
+    const resolved = await resolvedPromise;
+    assert.deepEqual(resolved, { playerId: hostId, effectType: WILD_DAUB, nullified: true, nullifiedBy: guestId });
+
+    const lastHostState = hostMatchStates.at(-1);
+    assert.ok(lastHostState, "host should have received at least one match:state broadcast");
+    assert.equal(lastHostState!.pendingSkill, undefined);
+    assert.ok(
+      lastHostState!.daubedCells === undefined || lastHostState!.daubedCells.length === 0,
+      "the daub never applied",
+    );
+  });
+});
+
+test("skill:respond nullify:false (pass) resolves the pending skill normally once every awaiting opponent has answered", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer({ verifyLoadout, resolveLoadout: mockResolveLoadout }, async ({ connect }) => {
+    const { host, guest, hostId } = await setupStandardSkillMatch(connect, [1], [2]);
+
+    // Same persistent-collector reasoning as the test above. skill:resolved
+    // is awaited on `host` too (not `guest`) so it's on the SAME connection
+    // as the match:state collector - events on one connection are strictly
+    // ordered, so by the time host sees skill:resolved it has necessarily
+    // already seen the match:state that preceded it. Awaiting it via guest's
+    // connection instead would have no such guarantee (different socket,
+    // no cross-connection ordering) and could read a stale hostMatchStates
+    // entry.
+    const hostMatchStates: { daubedCells?: number[]; pendingSkill?: unknown }[] = [];
+    host.on("match:state", (view: { daubedCells?: number[]; pendingSkill?: unknown }) => hostMatchStates.push(view));
+
+    const useRes = await emit(host, "skill:use", { effectType: WILD_DAUB, args: { cellIndex: 0 } });
+    assert.equal(useRes.ok, true);
+    if (!useRes.ok) throw new Error("unreachable");
+    assert.ok((useRes.view as { pendingSkill?: unknown }).pendingSkill, "expected a Nullify window to open");
+
+    const resolvedPromise = waitForEvent<{ playerId: string; effectType: string; nullified: boolean }>(
+      host,
+      "skill:resolved",
+    );
+    const respondRes = await emit(guest, "skill:respond", { nullify: false });
+    assert.equal(respondRes.ok, true, `expected success, got: ${JSON.stringify(respondRes)}`);
+
+    const resolved = await resolvedPromise;
+    assert.deepEqual(resolved, { playerId: hostId, effectType: WILD_DAUB, nullified: false });
+
+    const lastHostState = hostMatchStates.at(-1);
+    assert.ok(lastHostState, "host should have received at least one match:state broadcast");
+    assert.equal(lastHostState!.pendingSkill, undefined);
+    assert.deepEqual(lastHostState!.daubedCells, [0], "passing let the daub through");
+  });
+});
+
+test("an unanswered Nullify window auto-passes once nullifyTimeoutMs elapses, resolving the skill without the awaiting opponent ever responding", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer(
+    { verifyLoadout, resolveLoadout: mockResolveLoadout, nullifyTimeoutMs: 50 },
+    async ({ connect }) => {
+      const { host, guest, hostId } = await setupStandardSkillMatch(connect, [1], [2]);
+
+      // Persistent (not `.once`) collectors, attached before triggering
+      // skill:use - skill:use itself already causes one match:state
+      // broadcast (pendingSkill set, not yet resolved) before the timeout's
+      // own one arrives, so a `.once` listener attached only after the ack
+      // could race and grab the wrong one (see setupTwoPlayerMatch's
+      // comment on this exact hazard). Collecting everything and reading
+      // the LAST entry once skill:resolved has fired sidesteps the race -
+      // skill:resolved is awaited on `host` (same connection as the
+      // collector) rather than `guest`, since only same-connection delivery
+      // order is guaranteed (see the "pass" test's identical comment).
+      const hostMatchStates: { daubedCells?: number[]; pendingSkill?: unknown }[] = [];
+      host.on("match:state", (view: { daubedCells?: number[]; pendingSkill?: unknown }) =>
+        hostMatchStates.push(view),
+      );
+      const resolvedPromise = waitForEvent<{ playerId: string; effectType: string; nullified: boolean }>(
+        host,
+        "skill:resolved",
+      );
+
+      const useRes = await emit(host, "skill:use", { effectType: WILD_DAUB, args: { cellIndex: 0 } });
+      assert.equal(useRes.ok, true);
+      if (!useRes.ok) throw new Error("unreachable");
+      assert.ok((useRes.view as { pendingSkill?: unknown }).pendingSkill, "expected a Nullify window to open");
+
+      // guest deliberately never calls skill:respond - only the server-side timer should resolve this.
+      const resolved = await resolvedPromise;
+      assert.deepEqual(resolved, { playerId: hostId, effectType: WILD_DAUB, nullified: false });
+
+      const lastHostState = hostMatchStates.at(-1);
+      assert.ok(lastHostState, "host should have received at least one match:state broadcast");
+      assert.equal(lastHostState!.pendingSkill, undefined);
+      assert.deepEqual(lastHostState!.daubedCells, [0]);
+    },
+  );
+});
+
+test("winning via a skill (Wild Daub completing the 5th line) still emits match:ended and the daily_win_1_match quest event", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer({ verifyLoadout, resolveLoadout: mockResolveLoadout }, async ({ connect }) => {
+    const { host, guest, hostId } = await setupStandardSkillMatch(connect, [1], []);
+    const dailyWinQuest = exampleQuests.find((q) => q.id === "daily_win_1_match");
+    assert.ok(dailyWinQuest, "exampleQuests must define daily_win_1_match");
+
+    // Same call sequence/board pair as engine/skills.test.ts's "WILD_DAUB
+    // completes the 5th line and wins immediately" test: identityBoard (host)
+    // vs shiftedBoard (guest), 1..20 alternating leaves host with exactly 4
+    // completed lines and back on their own turn - Wild Daub on index 20
+    // (holds "21") completes the 5th (column0 + anti-diagonal) without ever
+    // calling 21.
+    for (let n = 1; n <= 20; n++) {
+      const caller = n % 2 === 1 ? host : guest;
+      const result = await emit(caller, "match:call", { number: n });
+      assert.equal(result.ok, true, `call ${n} should succeed`);
+    }
+
+    const questsCompleted: { questId: string; title: string }[] = [];
+    host.on("quest:completed", (payload: { questId: string; title: string }) => questsCompleted.push(payload));
+
+    const matchEnded = waitForEvent<{ winnerId: string | null }>(host, "match:ended");
+    const useRes = await emit(host, "skill:use", { effectType: WILD_DAUB, args: { cellIndex: 20 } });
+    assert.equal(useRes.ok, true, `expected success, got: ${JSON.stringify(useRes)}`);
+    if (!useRes.ok) throw new Error("unreachable");
+    const finalView = useRes.view as { status: string; winnerId?: string };
+    assert.equal(finalView.status, "finished");
+    assert.equal(finalView.winnerId, hostId);
+
+    const endedPayload = await matchEnded;
+    assert.equal(endedPayload.winnerId, hostId);
+
+    const winQuestPayload = questsCompleted.find((q) => q.questId === dailyWinQuest!.id);
+    assert.ok(
+      winQuestPayload,
+      `expected a quest:completed for ${dailyWinQuest!.id}, got: ${JSON.stringify(questsCompleted)}`,
+    );
   });
 });

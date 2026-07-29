@@ -19,9 +19,13 @@ import {
   type Board,
   type MatchPlayer,
   type MatchState,
+  type SkillArgs,
+  type SkillInstance,
   callNumber as engineCallNumber,
   createMatch,
   MIN_PLAYERS,
+  respondToSkill as engineRespondToSkill,
+  useSkill as engineUseSkill,
   validateBoard,
 } from "../engine/index.ts";
 
@@ -189,12 +193,35 @@ export function startDraft(code: string, playerId: string): Room {
   return room;
 }
 
+export interface SubmitBoardOptions {
+  /**
+   * Resolves a player's on-chain-verified loadout (skillIds, see
+   * loadout:set) into fresh SkillInstance[] (effectType + starting
+   * chargesLeft) for createMatch - CLAUDE.md step 1. Only called for
+   * players who actually set a non-empty loadout; absent entirely (casual
+   * rooms never set one) means every player starts with an empty loadout,
+   * unchanged from before the skill system existed. When a player DID set a
+   * loadout but no resolver is configured, that player simply starts with
+   * no skills rather than failing the whole match start - mirrors how
+   * `verifyLoadout` absent already gates "standard" mode off much earlier
+   * (room:create/loadout:set), so this is a defensive fallback, not the
+   * normal path.
+   */
+  readonly resolveLoadout?: (skillIds: readonly number[]) => Promise<SkillInstance[]>;
+}
+
 /**
  * Records a player's drafted board (validated via the engine's
- * validateBoard). Once every player in the room has submitted, builds the
- * MatchState via createMatch and flips the room to "playing".
+ * validateBoard). Once every player in the room has submitted, resolves any
+ * set loadouts (see SubmitBoardOptions) and builds the MatchState via
+ * createMatch, then flips the room to "playing".
  */
-export function submitBoard(code: string, playerId: string, numbers: readonly number[]): Room {
+export async function submitBoard(
+  code: string,
+  playerId: string,
+  numbers: readonly number[],
+  opts: SubmitBoardOptions = {},
+): Promise<Room> {
   const room = requireRoom(code);
 
   if (room.phase !== "draft") {
@@ -211,8 +238,18 @@ export function submitBoard(code: string, playerId: string, numbers: readonly nu
   player.board = numbers;
 
   if (room.players.every((p) => p.board !== undefined)) {
+    const loadouts: Record<string, readonly SkillInstance[]> = {};
+    if (opts.resolveLoadout) {
+      const resolveLoadout = opts.resolveLoadout;
+      for (const p of room.players) {
+        if (p.loadout && p.loadout.length > 0) {
+          loadouts[p.playerId] = await resolveLoadout(p.loadout);
+        }
+      }
+    }
+
     const matchPlayers: MatchPlayer[] = room.players.map((p) => ({ id: p.playerId, board: p.board! }));
-    room.match = createMatch(matchPlayers);
+    room.match = createMatch(matchPlayers, { loadouts });
     room.phase = "playing";
   }
 
@@ -286,6 +323,62 @@ export function callNumberInRoom(code: string, playerId: string, calledNumber: n
 
   try {
     const next = engineCallNumber(room.match, playerId, calledNumber);
+    room.match = next;
+    if (next.status === "finished") {
+      room.phase = "finished";
+    }
+    return { ok: true, room };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Same shape as CallNumberResult - kept as its own alias so useSkillInRoom/respondToSkillInRoom's intent reads clearly at their call sites (server.ts's skill:use/skill:respond handlers). */
+export type SkillActionResult = CallNumberResult;
+
+/**
+ * Thin wrapper around the engine's useSkill - same shape/purpose as
+ * callNumberInRoom (delegates, turns a thrown Error into { ok: false,
+ * error } instead of propagating).
+ */
+export function useSkillInRoom(
+  code: string,
+  playerId: string,
+  effectType: string,
+  args: SkillArgs,
+): SkillActionResult {
+  const room = rooms.get(code);
+  if (!room) return { ok: false, error: `Room ${code} not found` };
+  if (room.phase !== "playing" || !room.match) {
+    return { ok: false, error: `Room ${code} does not have a match in progress` };
+  }
+
+  try {
+    const next = engineUseSkill(room.match, playerId, effectType, args);
+    room.match = next;
+    if (next.status === "finished") {
+      room.phase = "finished";
+    }
+    return { ok: true, room };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Thin wrapper around the engine's respondToSkill - same shape/purpose as
+ * callNumberInRoom (delegates, turns a thrown Error into { ok: false,
+ * error } instead of propagating).
+ */
+export function respondToSkillInRoom(code: string, playerId: string, nullify: boolean): SkillActionResult {
+  const room = rooms.get(code);
+  if (!room) return { ok: false, error: `Room ${code} not found` };
+  if (room.phase !== "playing" || !room.match) {
+    return { ok: false, error: `Room ${code} does not have a match in progress` };
+  }
+
+  try {
+    const next = engineRespondToSkill(room.match, playerId, nullify);
     room.match = next;
     if (next.status === "finished") {
       room.phase = "finished";

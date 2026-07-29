@@ -1,11 +1,33 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import type { LobbyView, MatchEndedPayload, MatchView, QuestCompletedPayload } from "@thebingofi/server/protocol";
+import type {
+  LobbyView,
+  MatchEndedPayload,
+  MatchView,
+  QuestCompletedPayload,
+  SkillResolvedPayload,
+} from "@thebingofi/server/protocol";
+import type { SkillArgs } from "@thebingofi/server/engine";
 
 import { deriveRoomPhase, type RoomUiPhase } from "@/lib/roomPhase";
 import { getSocket } from "@/lib/socket";
 import { setStoredPlayerId } from "@/lib/storage";
+
+/**
+ * Client-only staging state for a skill whose args need extra board clicks
+ * before skill:use can actually be sent - WILD_DAUB (1 own cell ->
+ * `cellIndex`) and CELL_SWAP (2 own cells -> `a`/`b`). DOUBLE_CALL/
+ * GHOST_CALL need no staging at all (see castSkill - they're sent
+ * immediately with no args). `cellsNeeded` is supplied by the caller
+ * (armSkillSelection) rather than hardcoded here, so this hook doesn't need
+ * to know which effectType needs how many cells.
+ */
+export interface SkillSelectionState {
+  readonly effectType: string;
+  readonly cellsNeeded: number;
+  readonly cells: readonly number[];
+}
 
 export interface RoomState {
   readonly code: string | null;
@@ -14,6 +36,10 @@ export interface RoomState {
   readonly match: MatchView | null;
   readonly matchEnded: MatchEndedPayload | null;
   readonly questNotifications: readonly QuestCompletedPayload[];
+  /** Short history of skill:resolved events received this session - see server/API.md's "Skill in-match". */
+  readonly skillResolutions: readonly SkillResolvedPayload[];
+  /** In-progress WILD_DAUB/CELL_SWAP cell selection, if any - see SkillSelectionState. */
+  readonly skillSelection: SkillSelectionState | null;
   readonly error: string | null;
   readonly pending: boolean;
 }
@@ -24,6 +50,10 @@ type Action =
   | { readonly type: "match"; readonly view: MatchView }
   | { readonly type: "ended"; readonly payload: MatchEndedPayload }
   | { readonly type: "quest"; readonly payload: QuestCompletedPayload }
+  | { readonly type: "skillResolved"; readonly payload: SkillResolvedPayload }
+  | { readonly type: "armSkillSelection"; readonly effectType: string; readonly cellsNeeded: number }
+  | { readonly type: "cancelSkillSelection" }
+  | { readonly type: "selectSkillCell"; readonly index: number }
   | { readonly type: "error"; readonly message: string }
   | { readonly type: "clearError" }
   | { readonly type: "pending"; readonly value: boolean }
@@ -36,6 +66,8 @@ const initialState: RoomState = {
   match: null,
   matchEnded: null,
   questNotifications: [],
+  skillResolutions: [],
+  skillSelection: null,
   error: null,
   pending: false,
 };
@@ -59,6 +91,16 @@ function reducer(state: RoomState, action: Action): RoomState {
       return { ...state, matchEnded: action.payload };
     case "quest":
       return { ...state, questNotifications: [...state.questNotifications, action.payload] };
+    case "skillResolved":
+      return { ...state, skillResolutions: [...state.skillResolutions, action.payload] };
+    case "armSkillSelection":
+      return { ...state, skillSelection: { effectType: action.effectType, cellsNeeded: action.cellsNeeded, cells: [] } };
+    case "cancelSkillSelection":
+      return { ...state, skillSelection: null };
+    case "selectSkillCell":
+      return state.skillSelection
+        ? { ...state, skillSelection: { ...state.skillSelection, cells: [...state.skillSelection.cells, action.index] } }
+        : state;
     case "error":
       return { ...state, error: action.message, pending: false };
     case "clearError":
@@ -92,12 +134,14 @@ export function useRoom() {
     socket.on("match:state", (view) => dispatch({ type: "match", view }));
     socket.on("match:ended", (payload) => dispatch({ type: "ended", payload }));
     socket.on("quest:completed", (payload) => dispatch({ type: "quest", payload }));
+    socket.on("skill:resolved", (payload) => dispatch({ type: "skillResolved", payload }));
 
     return () => {
       socket.off("room:state");
       socket.off("match:state");
       socket.off("match:ended");
       socket.off("quest:completed");
+      socket.off("skill:resolved");
       socket.disconnect();
     };
   }, []);
@@ -165,6 +209,56 @@ export function useRoom() {
     });
   }, []);
 
+  /** Sends skill:use for `effectType` (no staging needed - DOUBLE_CALL/GHOST_CALL, or already-gathered args for WILD_DAUB/CELL_SWAP). Not named `useSkill` on purpose - a function named `useXxx` reads as a React hook to eslint-plugin-react-hooks, and this is called from plain click handlers, not render. */
+  const castSkill = useCallback((effectType: string, args?: SkillArgs) => {
+    dispatch({ type: "pending", value: true });
+    socketRef.current.emit("skill:use", { effectType, args }, (res) => {
+      if (!res.ok) {
+        dispatch({ type: "error", message: res.error });
+        return;
+      }
+      dispatch({ type: "match", view: res.view });
+    });
+  }, []);
+
+  /** Answers an open Nullify window - true to Nullify (cancel the pending skill), false to pass ("Biarkan"). */
+  const respondSkill = useCallback((nullify: boolean) => {
+    dispatch({ type: "pending", value: true });
+    socketRef.current.emit("skill:respond", { nullify }, (res) => {
+      if (!res.ok) {
+        dispatch({ type: "error", message: res.error });
+        return;
+      }
+      dispatch({ type: "match", view: res.view });
+    });
+  }, []);
+
+  /** Starts client-side cell-picking for a skill that needs board clicks before it can be cast (WILD_DAUB: 1 cell, CELL_SWAP: 2) - see SkillSelectionState. */
+  const armSkillSelection = useCallback((effectType: string, cellsNeeded: number) => {
+    dispatch({ type: "armSkillSelection", effectType, cellsNeeded });
+  }, []);
+
+  const cancelSkillSelection = useCallback(() => dispatch({ type: "cancelSkillSelection" }), []);
+
+  /** Registers one board-cell click while a WILD_DAUB/CELL_SWAP selection is armed. Once enough cells are picked, casts the skill (cellsNeeded 1 -> {cellIndex}, 2 -> {a, b}) and clears the selection - no-op if nothing is armed or `index` was already picked. */
+  const selectSkillCell = useCallback(
+    (index: number) => {
+      const selection = state.skillSelection;
+      if (!selection || selection.cells.includes(index)) return;
+
+      const cells = [...selection.cells, index];
+      if (cells.length < selection.cellsNeeded) {
+        dispatch({ type: "selectSkillCell", index });
+        return;
+      }
+
+      dispatch({ type: "cancelSkillSelection" });
+      const args: SkillArgs = selection.cellsNeeded === 1 ? { cellIndex: cells[0] } : { a: cells[0], b: cells[1] };
+      castSkill(selection.effectType, args);
+    },
+    [state.skillSelection, castSkill],
+  );
+
   const clearError = useCallback(() => dispatch({ type: "clearError" }), []);
 
   const phase: RoomUiPhase | null = useMemo(() => deriveRoomPhase(state.lobby, state.matchEnded), [
@@ -172,5 +266,20 @@ export function useRoom() {
     state.matchEnded,
   ]);
 
-  return { state, phase, createRoom, joinRoom, leaveRoom, startDraft, submitDraft, callNumber, clearError };
+  return {
+    state,
+    phase,
+    createRoom,
+    joinRoom,
+    leaveRoom,
+    startDraft,
+    submitDraft,
+    callNumber,
+    castSkill,
+    respondSkill,
+    armSkillSelection,
+    cancelSkillSelection,
+    selectSkillCell,
+    clearError,
+  };
 }

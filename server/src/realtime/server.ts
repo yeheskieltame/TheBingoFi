@@ -31,13 +31,15 @@ import type {
   RoomJoinPayload,
   RoomJoinedAckData,
   ServerToClientEvents,
+  SkillRespondPayload,
+  SkillUsePayload,
   WalletLinkAckData,
   WalletLinkPayload,
   WalletNonceAckData,
 } from "../api/protocol.ts";
 import { recordEvent } from "../api/questStore.ts";
-import type { MatchState } from "../engine/index.ts";
-import { eventsFromCall } from "../quest/events.ts";
+import type { MatchState, PendingSkill, SkillArgs, SkillInstance } from "../engine/index.ts";
+import { eventsFromCall, type GameEvent } from "../quest/events.ts";
 import {
   assertCanSetLoadout,
   callNumberInRoom,
@@ -46,12 +48,14 @@ import {
   getRoom,
   joinRoom,
   MAX_LOADOUT_SIZE,
+  respondToSkillInRoom,
   type Room,
   type RoomMode,
   setPlayerLoadout,
   setPlayerWallet,
   startDraft,
   submitBoard,
+  useSkillInRoom,
 } from "./rooms.ts";
 import { lobbyView, matchViewFor } from "./views.ts";
 
@@ -59,6 +63,8 @@ const MAX_NICKNAME_LENGTH = 24;
 const MAX_ROOM_CODE_LENGTH = 12;
 /** ~5 minutes - long enough for a wallet popup, short enough to bound replay risk. */
 const WALLET_NONCE_TTL_MS = 5 * 60 * 1000;
+/** How long a Nullify window stays open before every still-`awaiting` opponent auto-passes - see armNullifyTimer. Override via opts.nullifyTimeoutMs (tests use a much smaller value). */
+const DEFAULT_NULLIFY_TIMEOUT_MS = 15_000;
 
 /**
  * A thin, injectable stand-in for chain/reader.ts's `verifyLoadout` -
@@ -82,6 +88,21 @@ export interface RealtimeServerOptions {
    * production default (chain/defaultVerifier.ts).
    */
   readonly verifyLoadout?: LoadoutVerifier;
+  /**
+   * Resolves a player's verified loadout (skillIds) into fresh
+   * SkillInstance[] (effectType + starting chargesLeft) once a match is
+   * about to start - see rooms.ts's submitBoard/SubmitBoardOptions. Absent
+   * (or a player who never set a loadout) means that player simply starts
+   * with no skills - see index.ts for the production default.
+   */
+  readonly resolveLoadout?: (skillIds: readonly number[]) => Promise<SkillInstance[]>;
+  /**
+   * How long a Nullify window (see skill:pending) stays open before every
+   * still-`awaiting` opponent auto-passes - default DEFAULT_NULLIFY_TIMEOUT_MS
+   * (15s). Override for tests that need to observe a timeout without
+   * actually waiting 15 real seconds.
+   */
+  readonly nullifyTimeoutMs?: number;
 }
 
 // -- wire types ---------------------------------------------------------
@@ -195,6 +216,34 @@ function validateSkillIdsArray(value: unknown): number[] {
   return skillIds;
 }
 
+function validateEffectType(value: unknown): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error("effectType must be a non-empty string");
+  }
+  return value;
+}
+
+/** Shape-only: which of cellIndex/a/b are present and are numbers. Range/relevance-to-effectType checks (e.g. "cellIndex 0-24", "CELL_SWAP needs both a and b") are the engine's job - see engine/skills.ts's validateSkillArgs, re-run server-side regardless of what the client sends. */
+function validateSkillArgsPayload(value: unknown): SkillArgs {
+  if (value === undefined) return {};
+  if (typeof value !== "object" || value === null) {
+    throw new Error("args must be an object");
+  }
+  const raw = value as Record<string, unknown>;
+  const args: { cellIndex?: number; a?: number; b?: number } = {};
+  for (const key of ["cellIndex", "a", "b"] as const) {
+    if (raw[key] === undefined) continue;
+    if (typeof raw[key] !== "number") throw new Error(`args.${key} must be a number`);
+    args[key] = raw[key];
+  }
+  return args;
+}
+
+function validateNullifyFlag(value: unknown): boolean {
+  if (typeof value !== "boolean") throw new Error("nullify must be a boolean");
+  return value;
+}
+
 /**
  * Wraps a handler so a bad/unexpected payload (wrong shape despite what the
  * protocol type promises, missing ack, or a thrown Error / rejected Promise
@@ -294,17 +343,98 @@ function applyExitResult(
 // GET /quests/progress/:playerId - this is just the realtime-side glue that
 // turns a match transition into events and broadcasts newly-completed quests.
 
+/** Today's date (UTC) as YYYY-MM-DD - the period key questStore.ts's recordEvent needs. */
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Folds one GameEvent into the shared quest store and broadcasts quest:completed (to that player only) for anything it newly completes. */
+function emitQuestEvent(io: RealtimeServer, event: GameEvent, dateISO: string): void {
+  const result = recordEvent(event, dateISO);
+  for (const quest of result.completed) {
+    io.to(playerChannel(event.playerId)).emit("quest:completed", { questId: quest.id, title: quest.title });
+  }
+}
+
 function processQuestEvents(io: RealtimeServer, prevMatch: MatchState, nextMatch: MatchState): void {
   const events = eventsFromCall(prevMatch, nextMatch);
   if (events.length === 0) return;
 
-  const dateISO = new Date().toISOString().slice(0, 10);
-  for (const event of events) {
-    const result = recordEvent(event, dateISO);
-    for (const quest of result.completed) {
-      io.to(playerChannel(event.playerId)).emit("quest:completed", { questId: quest.id, title: quest.title });
-    }
+  const dateISO = today();
+  for (const event of events) emitQuestEvent(io, event, dateISO);
+}
+
+// -- skills (in-match) ---------------------------------------------------
+//
+// useSkill/respondToSkill (via rooms.ts's useSkillInRoom/respondToSkillInRoom)
+// live behind the skill:use/skill:respond socket handlers below. A
+// nullifiable skill use opens a Nullify window (MatchState.pendingSkill,
+// see engine/skills.ts) that every capable opponent can act on via
+// skill:respond - this section also owns the server-side timeout that
+// auto-passes for whoever hasn't answered once the window expires, so a
+// silent/AFK opponent can never stall a match indefinitely.
+//
+// One timer per room code (never per-skill) is enough: a room can only ever
+// have one skill pending at a time (useSkill/respondToSkill both reject
+// while one already is), so a fresh arm always first clears whatever was
+// there before.
+
+const nullifyTimers = new Map<string, NodeJS.Timeout>();
+
+function clearNullifyTimer(code: string): void {
+  const timer = nullifyTimers.get(code);
+  if (timer) {
+    clearTimeout(timer);
+    nullifyTimers.delete(code);
   }
+}
+
+function armNullifyTimer(io: RealtimeServer, code: string, timeoutMs: number): void {
+  clearNullifyTimer(code);
+  const timer = setTimeout(() => autoPassNullify(io, code), timeoutMs);
+  timer.unref?.(); // never keep the process alive just for a pending Nullify window
+  nullifyTimers.set(code, timer);
+}
+
+/** Broadcasts a resolved (non-Nullified) skill's aftermath: updated match:state, skill:resolved, the skill_used quest event, whatever eventsFromCall derives from the prev->next transition (line completions, a win), and match:ended if it just finished. Shared by all three ways a skill can resolve without being Nullified: no capable opponent / CELL_SWAP (immediate, in the skill:use handler), every awaiting opponent passed (skill:respond), and the Nullify window timing out (autoPassNullify). */
+function announceSkillResolved(
+  io: RealtimeServer,
+  room: Room,
+  prevMatch: MatchState,
+  nextMatch: MatchState,
+  pending: Pick<PendingSkill, "playerId" | "effectType">,
+): void {
+  io.to(roomChannel(room.code)).emit("skill:resolved", {
+    playerId: pending.playerId,
+    effectType: pending.effectType,
+    nullified: false,
+  });
+  const dateISO = today();
+  emitQuestEvent(io, { type: "skill_used", playerId: pending.playerId, effectType: pending.effectType }, dateISO);
+  processQuestEvents(io, prevMatch, nextMatch);
+  if (nextMatch.status === "finished") {
+    io.to(roomChannel(room.code)).emit("match:ended", { winnerId: nextMatch.winnerId ?? null });
+  }
+}
+
+/** Fires once a room's Nullify window (see armNullifyTimer) expires: every opponent still in `awaiting` auto-passes, in order - respondToSkill only needs each id to still be in the (shrinking) awaiting list, which holds regardless of order since every id here started out in it exactly once. */
+function autoPassNullify(io: RealtimeServer, code: string): void {
+  nullifyTimers.delete(code);
+  const room = getRoom(code);
+  const pending = room?.match?.pendingSkill;
+  if (!room || !pending) return;
+
+  const prevMatch = room.match!;
+  let result: ReturnType<typeof respondToSkillInRoom> = { ok: true, room };
+  for (const playerId of pending.awaiting) {
+    if (!result.ok || !result.room) break;
+    result = respondToSkillInRoom(code, playerId, false);
+  }
+  if (!result.ok || !result.room) return; // unreachable in practice: every id in `awaiting` was valid when the window opened
+
+  const updatedRoom = result.room;
+  broadcastMatchState(io, updatedRoom);
+  announceSkillResolved(io, updatedRoom, prevMatch, updatedRoom.match!, pending);
 }
 
 // -- server ---------------------------------------------------------
@@ -314,6 +444,8 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
     cors: { origin: "*" },
   });
   const verifyLoadout = opts.verifyLoadout;
+  const resolveLoadout = opts.resolveLoadout;
+  const nullifyTimeoutMs = opts.nullifyTimeoutMs ?? DEFAULT_NULLIFY_TIMEOUT_MS;
 
   io.on("connection", (socket) => {
     socket.on(
@@ -417,6 +549,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
       "room:leave",
       safeHandler<EmptyAckData, EmptyAckData>((_payload, ack) => {
         const ctx = requireSocketRoom(socket);
+        clearNullifyTimer(ctx.roomCode);
         const result = exitRoom(ctx.roomCode, ctx.playerId);
         clearSocketRoom(socket);
         ack({ ok: true });
@@ -436,10 +569,10 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
 
     socket.on(
       "draft:submit",
-      safeHandler<DraftSubmitPayload, LobbyAckData>((payload, ack) => {
+      safeHandler<DraftSubmitPayload, LobbyAckData>(async (payload, ack) => {
         const ctx = requireSocketRoom(socket);
         const numbers = validateNumbersArray(payload?.numbers);
-        const room = submitBoard(ctx.roomCode, ctx.playerId, numbers);
+        const room = await submitBoard(ctx.roomCode, ctx.playerId, numbers, { resolveLoadout });
         ack({ ok: true, view: lobbyView(room) });
         broadcastLobby(io, room);
         if (room.phase === "playing") broadcastMatchState(io, room);
@@ -484,9 +617,109 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
       }),
     );
 
+    socket.on(
+      "skill:use",
+      safeHandler<SkillUsePayload, MatchCallAckData>((payload, ack) => {
+        const ctx = requireSocketRoom(socket);
+        const effectType = validateEffectType(payload?.effectType);
+        const args = validateSkillArgsPayload(payload?.args);
+
+        const room = getRoom(ctx.roomCode);
+        if (!room) throw new Error(`Room ${ctx.roomCode} not found`);
+        const prevMatch = room.match;
+
+        const result = useSkillInRoom(ctx.roomCode, ctx.playerId, effectType, args);
+        if (!result.ok || !result.room) {
+          ack({ ok: false, error: result.error ?? "Unknown error" });
+          return;
+        }
+
+        const updatedRoom = result.room;
+        const view = matchViewFor(updatedRoom, ctx.playerId);
+        if (!view) {
+          // Unreachable in practice - see match:call's identical guard above.
+          ack({ ok: false, error: "Match state unavailable" });
+          return;
+        }
+        ack({ ok: true, view });
+        broadcastMatchState(io, updatedRoom);
+
+        const nextMatch = updatedRoom.match!;
+        if (nextMatch.pendingSkill) {
+          // Newly opened Nullify window - broadcast once here; further
+          // narrowing of `awaiting` as opponents respond is only observable
+          // via match:state (already sent above), not a repeat of this event.
+          io.to(roomChannel(ctx.roomCode)).emit("skill:pending", {
+            playerId: ctx.playerId,
+            effectType,
+            awaiting: nextMatch.pendingSkill.awaiting,
+          });
+          armNullifyTimer(io, ctx.roomCode, nullifyTimeoutMs);
+          return;
+        }
+
+        // Resolved immediately: no Nullify-capable opponent, or CELL_SWAP
+        // (which never opens a window at all - see engine/skills.ts).
+        if (prevMatch) {
+          announceSkillResolved(io, updatedRoom, prevMatch, nextMatch, { playerId: ctx.playerId, effectType });
+        }
+      }),
+    );
+
+    socket.on(
+      "skill:respond",
+      safeHandler<SkillRespondPayload, MatchCallAckData>((payload, ack) => {
+        const ctx = requireSocketRoom(socket);
+        const nullify = validateNullifyFlag(payload?.nullify);
+
+        const room = getRoom(ctx.roomCode);
+        if (!room) throw new Error(`Room ${ctx.roomCode} not found`);
+        const prevMatch = room.match;
+        const pending = prevMatch?.pendingSkill;
+
+        const result = respondToSkillInRoom(ctx.roomCode, ctx.playerId, nullify);
+        if (!result.ok || !result.room) {
+          ack({ ok: false, error: result.error ?? "Unknown error" });
+          return;
+        }
+
+        const updatedRoom = result.room;
+        const view = matchViewFor(updatedRoom, ctx.playerId);
+        if (!view) {
+          // Unreachable in practice - see match:call's identical guard above.
+          ack({ ok: false, error: "Match state unavailable" });
+          return;
+        }
+        ack({ ok: true, view });
+        broadcastMatchState(io, updatedRoom);
+
+        const nextMatch = updatedRoom.match!;
+        if (nextMatch.pendingSkill || !pending || !prevMatch) {
+          // Still awaiting other opponents (or, defensively, nothing was
+          // actually pending) - nothing resolved yet.
+          return;
+        }
+
+        clearNullifyTimer(ctx.roomCode);
+
+        if (nullify) {
+          io.to(roomChannel(ctx.roomCode)).emit("skill:resolved", {
+            playerId: pending.playerId,
+            effectType: pending.effectType,
+            nullified: true,
+            nullifiedBy: ctx.playerId,
+          });
+          return;
+        }
+
+        announceSkillResolved(io, updatedRoom, prevMatch, nextMatch, pending);
+      }),
+    );
+
     socket.on("disconnect", () => {
       const { roomCode, playerId } = socket.data;
       if (!roomCode || !playerId) return;
+      clearNullifyTimer(roomCode);
 
       const result = exitRoom(roomCode, playerId);
       applyExitResult(io, roomCode, result, "player_disconnected");

@@ -1,6 +1,6 @@
 "use client";
 
-import { MIN_PLAYERS } from "@thebingofi/server/engine";
+import { CELL_SWAP, MIN_PLAYERS, WILD_DAUB } from "@thebingofi/server/engine";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef } from "react";
 
@@ -10,6 +10,7 @@ import MatchBoard from "@/components/MatchBoard";
 import MatchResult from "@/components/MatchResult";
 import PlayerList from "@/components/PlayerList";
 import QuestNotifications from "@/components/QuestNotifications";
+import SkillPanel from "@/components/SkillPanel";
 import { useDraftBoard } from "@/hooks/useDraftBoard";
 import { useRoom } from "@/hooks/useRoom";
 import { strings } from "@/i18n/strings";
@@ -56,6 +57,17 @@ function PlayScreen() {
     router.push("/");
   }
 
+  /** Skill button clicked in SkillPanel: WILD_DAUB/CELL_SWAP need extra board clicks first (see MatchBoard's skillSelection), DOUBLE_CALL/GHOST_CALL cast immediately with no args. */
+  function handleActivateSkill(effectType: string) {
+    if (effectType === WILD_DAUB) {
+      room.armSkillSelection(effectType, 1);
+    } else if (effectType === CELL_SWAP) {
+      room.armSkillSelection(effectType, 2);
+    } else {
+      room.castSkill(effectType);
+    }
+  }
+
   const me = room.state.lobby?.players.find((player) => player.playerId === room.state.playerId);
   const isHost = room.state.lobby?.hostId === room.state.playerId;
 
@@ -78,6 +90,8 @@ function PlayScreen() {
           code={room.state.code ?? ""}
           players={room.state.lobby.players}
           hostId={room.state.lobby.hostId}
+          mode={room.state.lobby.mode}
+          playerId={room.state.playerId ?? ""}
           isHost={isHost}
           canStart={room.state.lobby.players.length >= MIN_PLAYERS}
           pending={room.state.pending}
@@ -114,7 +128,27 @@ function PlayScreen() {
       )}
 
       {room.phase === "playing" && room.state.match && (
-        <MatchBoard view={room.state.match} playerId={room.state.playerId ?? ""} onCall={room.callNumber} pending={room.state.pending} />
+        <>
+          <MatchBoard
+            view={room.state.match}
+            playerId={room.state.playerId ?? ""}
+            onCall={room.callNumber}
+            pending={room.state.pending}
+            skillSelection={room.state.skillSelection}
+            onSelectSkillCell={room.selectSkillCell}
+          />
+          <SkillPanel
+            view={room.state.match}
+            viewerPlayerId={room.state.playerId ?? ""}
+            pending={room.state.pending}
+            selection={room.state.skillSelection}
+            resolutions={room.state.skillResolutions}
+            onActivateSkill={handleActivateSkill}
+            onCancelSelection={room.cancelSkillSelection}
+            onNullify={() => room.respondSkill(true)}
+            onPass={() => room.respondSkill(false)}
+          />
+        </>
       )}
 
       {room.phase === "finished" && (

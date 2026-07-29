@@ -46,7 +46,7 @@ class, dst) saat dipoles.
 
 ### Detail tiap file di `hooks/`
 
-- `hooks/useRoom.ts` — state machine utama `/play`: connect socket, `room:create`/`room:join`/`room:leave`/`draft:start`/`draft:submit`/`match:call`, plus listener `room:state`/`match:state`/`match:ended`/`quest:completed`. Return `{ state, phase, createRoom, joinRoom, leaveRoom, startDraft, submitDraft, callNumber, clearError }`.
+- `hooks/useRoom.ts` — state machine utama `/play`: connect socket, `room:create`/`room:join`/`room:leave`/`draft:start`/`draft:submit`/`match:call`/`skill:use`/`skill:respond`, plus listener `room:state`/`match:state`/`match:ended`/`quest:completed`/`skill:resolved`. Return `{ state, phase, createRoom, joinRoom, leaveRoom, startDraft, submitDraft, callNumber, castSkill, respondSkill, armSkillSelection, cancelSkillSelection, selectSkillCell, clearError }`. `state` juga bawa `skillResolutions` (riwayat singkat `skill:resolved` sesi ini) dan `skillSelection` (state client-only untuk WILD_DAUB/CELL_SWAP — lihat komentar `SkillSelectionState` di file ini). `pendingSkill`/`myTurnArmed`/`loadout`/`daubedCells`/`ghostNumbers` viewer sendiri sudah ada langsung di `state.match` (dari `MatchView`, lihat `server/API.md`'s "Skill in-match"), tidak perlu state terpisah. `castSkill` (bukan `useSkill`) — nama `useXxx` dihindari supaya eslint-plugin-react-hooks tidak salah anggap ini React hook (dipanggil dari click handler biasa, bukan render).
 - `hooks/useDraftBoard.ts` — state board 5x5 saat menyusun angka (klik-dua-sel-untuk-tukar, acak, validasi realtime pakai `validateBoard` dari `@thebingofi/server/engine`). Dipakai ulang oleh `/play` (fase draft) dan `/daily`.
 - `hooks/useDailyChallenge.ts` — `GET /daily/today` + `GET /daily/leaderboard` saat mount, `play(nickname, board)` untuk `POST /daily/play`.
 - `hooks/useQuests.ts` — `GET /quests` saat mount, plus `GET /quests/progress/:playerId` kalau ada playerId tersimpan.
@@ -89,15 +89,28 @@ server jalan di port lain, ubah nilai ini.
 
 | Komponen | Props | Dipakai di |
 |---|---|---|
-| `Lobby` | `code, players, hostId, isHost, canStart, pending, onStartDraft, onLeave` | `/play` (fase lobby) |
+| `Lobby` | `code, players, hostId, mode, playerId, isHost, canStart, pending, onStartDraft, onLeave` | `/play` (fase lobby) |
 | `PlayerList` | `players, hostId` | `Lobby`, `/play` (fase draft) |
 | `DraftBoard` | `numbers, selectedIndex, onSelectCell, onShuffle, valid, validationError?` | `/play` (fase draft), `/daily` |
-| `MatchBoard` | `view (MatchView), playerId, onCall, pending` | `/play` (fase playing) |
+| `MatchBoard` | `view (MatchView), playerId, onCall, pending, skillSelection?, onSelectSkillCell?` | `/play` (fase playing) |
+| `SkillPanel` | `view (MatchView), viewerPlayerId, pending, selection, resolutions, onActivateSkill, onCancelSelection, onNullify, onPass` | `/play` (fase playing) |
 | `MatchResult` | `winnerId, reason?, players, onBackToLanding` | `/play` (fase finished) |
 | `QuestNotifications` | `notifications (QuestCompletedPayload[])` | `/play` |
 | `DailyResult` | `number, score, callsToBingo, shareCard, copied, onCopy` | `/daily` |
 | `DailyLeaderboard` | `entries (DailyLeaderboardEntry[])` | `/daily` |
 | `QuestList` | `quests, progress` | `/quests` |
+
+`Lobby` menampilkan loadout (skill id) + wallet milik VIEWER SENDIRI kalau
+`mode === "standard"` — hanya baca-tulis lewat `loadout:set` di socket
+lain (belum ada wallet connect di FE ini, lihat catatan i18n
+`play.lobby.loadoutNote`), jadi di sini murni tampilan.
+
+`MatchBoard`'s papan sendiri sekarang pakai `markedCellsFor` dari
+`@thebingofi/server/engine` (bukan cuma `calledNumbers`) supaya sel yang
+ter-Ghost-Call/Wild-Daub ikut tampak tertandai. Kalau `skillSelection`
+di-set (lagi memilih sel untuk WILD_DAUB/CELL_SWAP — lihat `SkillPanel`),
+sel papan sendiri jadi bisa diklik lewat `onSelectSkillCell` menggantikan
+tampilan tertandai/tidak yang biasa.
 
 Semua komponen di atas "dumb": tidak ada `useEffect`/fetch/socket di
 dalamnya, cuma menerima props dan me-render markup polos + memanggil

@@ -1,6 +1,13 @@
 export type Locale = "id" | "en";
 
-interface LocaleStrings {
+/**
+ * Exported (rather than kept private) so components that look up a string
+ * by a dynamic key (e.g. SkillPanel indexing `effectNames` by a runtime
+ * `effectType`) can annotate their local `t` with this - `strings` itself
+ * stays narrowly-typed to its literal object shape (that's the point of
+ * `satisfies` below), which TS won't let you index with a plain `string`.
+ */
+export interface LocaleStrings {
   common: Record<string, string>;
   landing: Record<string, string>;
   play: {
@@ -13,6 +20,24 @@ interface LocaleStrings {
     match: Record<string, string>;
     result: Record<string, string>;
     quests: Record<string, string>;
+    skills: {
+      title: string;
+      yourSkills: string;
+      use: string;
+      chargesLeft: string;
+      selectPrompt: Record<string, string>;
+      cancelSelection: string;
+      armedDoublePrefix: string;
+      armedDoubleSuffix: string;
+      armedGhost: string;
+      pendingLabel: string;
+      nullify: string;
+      pass: string;
+      historyTitle: string;
+      wasNullified: string;
+      wasResolved: string;
+      effectNames: Record<string, string>;
+    };
   };
   daily: {
     title: string;
@@ -65,6 +90,12 @@ export const strings = {
         waiting: "Menyusun board",
         startDraft: "Mulai Draft",
         needMorePlayers: "Butuh minimal 2 pemain untuk mulai draft",
+        loadoutTitle: "Loadout Kamu",
+        walletLabel: "Wallet",
+        walletNotLinked: "Wallet belum di-link",
+        loadoutLabel: "Skill id",
+        loadoutEmpty: "belum diset",
+        loadoutNote: "Set loadout butuh wallet ter-link (connect wallet belum ada di sini) — link wallet via client lain, loadout kamu akan tampil di sini begitu tersimpan.",
       },
       draft: {
         title: "Susun Board",
@@ -95,6 +126,33 @@ export const strings = {
       quests: {
         title: "Quest Selesai",
         empty: "Belum ada quest selesai di sesi ini",
+      },
+      skills: {
+        title: "Skill",
+        yourSkills: "Skill Kamu",
+        use: "Pakai",
+        chargesLeft: "sisa charge",
+        selectPrompt: {
+          WILD_DAUB: "Pilih 1 sel di board kamu untuk di-daub",
+          CELL_SWAP: "Pilih 2 sel di board kamu untuk ditukar",
+        },
+        cancelSelection: "Batal",
+        armedDoublePrefix: "Double Call aktif — panggil ",
+        armedDoubleSuffix: " angka giliran ini",
+        armedGhost: "Ghost Call aktif — panggilan berikutnya hanya tertandai di board kamu",
+        pendingLabel: "Menunggu keputusan Nullify",
+        nullify: "Nullify",
+        pass: "Biarkan",
+        historyTitle: "Riwayat Skill",
+        wasNullified: "dibatalkan (Nullify)",
+        wasResolved: "berhasil",
+        effectNames: {
+          WILD_DAUB: "Wild Daub",
+          DOUBLE_CALL: "Double Call",
+          GHOST_CALL: "Ghost Call",
+          CELL_SWAP: "Cell Swap",
+          NULLIFY: "Nullify",
+        },
       },
     },
     daily: {
@@ -164,6 +222,12 @@ export const strings = {
         waiting: "Drafting board",
         startDraft: "Start Draft",
         needMorePlayers: "Need at least 2 players to start the draft",
+        loadoutTitle: "Your Loadout",
+        walletLabel: "Wallet",
+        walletNotLinked: "Wallet not linked",
+        loadoutLabel: "Skill ids",
+        loadoutEmpty: "not set",
+        loadoutNote: "Setting a loadout needs a linked wallet (wallet connect isn't available here yet) — link your wallet via another client, your loadout will show up here once saved.",
       },
       draft: {
         title: "Arrange Board",
@@ -194,6 +258,33 @@ export const strings = {
       quests: {
         title: "Quests Completed",
         empty: "No quests completed this session yet",
+      },
+      skills: {
+        title: "Skills",
+        yourSkills: "Your Skills",
+        use: "Use",
+        chargesLeft: "charges left",
+        selectPrompt: {
+          WILD_DAUB: "Pick 1 cell on your board to daub",
+          CELL_SWAP: "Pick 2 cells on your board to swap",
+        },
+        cancelSelection: "Cancel",
+        armedDoublePrefix: "Double Call armed — call ",
+        armedDoubleSuffix: " numbers this turn",
+        armedGhost: "Ghost Call armed — your next call only marks your own board",
+        pendingLabel: "Awaiting a Nullify decision",
+        nullify: "Nullify",
+        pass: "Pass",
+        historyTitle: "Skill History",
+        wasNullified: "Nullified",
+        wasResolved: "resolved",
+        effectNames: {
+          WILD_DAUB: "Wild Daub",
+          DOUBLE_CALL: "Double Call",
+          GHOST_CALL: "Ghost Call",
+          CELL_SWAP: "Cell Swap",
+          NULLIFY: "Nullify",
+        },
       },
     },
     daily: {
