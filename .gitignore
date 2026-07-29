@@ -1,0 +1,21 @@
+# env — jangan pernah commit key
+.env
+.env.*
+!.env.example
+
+# node
+node_modules/
+dist/
+coverage/
+
+# next
+web/.next/
+web/out/
+
+# foundry
+contracts/cache/
+contracts/out/
+contracts/broadcast/**/dry-run/
+
+# misc
+.DS_Store

@@ -1,0 +1,10 @@
+{
+  "name": "thebingofi",
+  "private": true,
+  "scripts": {
+    "server": "pnpm --filter @thebingofi/server",
+    "web": "pnpm --filter @thebingofi/web",
+    "test:contracts": "forge test --root contracts",
+    "test:server": "pnpm --filter @thebingofi/server test"
+  }
+}

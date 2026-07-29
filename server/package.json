@@ -1,0 +1,14 @@
+{
+  "name": "@thebingofi/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^25"
+  }
+}
