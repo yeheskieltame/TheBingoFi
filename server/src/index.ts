@@ -9,6 +9,7 @@
  */
 import { createServer } from "node:http";
 import { createHttpHandler } from "./api/http.ts";
+import { createDefaultLoadoutVerifier } from "./chain/defaultVerifier.ts";
 import { createRealtimeServer } from "./realtime/server.ts";
 
 export * from "./engine/index.ts";
@@ -20,7 +21,19 @@ export type * from "./api/protocol.ts";
 if (import.meta.main) {
   const PORT = Number(process.env.PORT ?? 3001);
   const httpServer = createServer(createHttpHandler());
-  createRealtimeServer(httpServer);
+  // DI wiring: the realtime layer never builds a viem client itself (see
+  // realtime/server.ts's LoadoutVerifier / RealtimeServerOptions) - this is
+  // the one spot that resolves the real one (env vars, falling back to
+  // contracts/deployments/91342.json) and hands it in. Undefined here
+  // (chain not configured) means "standard" mode rooms are rejected with a
+  // clear error rather than the server failing to boot.
+  const verifyLoadout = createDefaultLoadoutVerifier();
+  if (!verifyLoadout) {
+    console.warn(
+      'Chain belum dikonfigurasi (REGISTRY_ADDRESS/COLLECTION_ADDRESS/contracts/deployments/91342.json) - mode "standard" tidak tersedia.',
+    );
+  }
+  createRealtimeServer(httpServer, { verifyLoadout });
   httpServer.listen(PORT, () => {
     console.log(`TheBingoFi realtime server ready on :${PORT}`);
   });

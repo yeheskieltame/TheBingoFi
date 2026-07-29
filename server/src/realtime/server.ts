@@ -13,14 +13,17 @@
  * everything.
  */
 
+import { randomUUID } from "node:crypto";
 import type { Server as NodeHttpServer } from "node:http";
 import { Server, type Socket } from "socket.io";
+import { verifyMessage, type Address, type Hex } from "viem";
 
 import type {
   Ack,
   ClientToServerEvents,
   DraftSubmitPayload,
   EmptyAckData,
+  LoadoutSetPayload,
   LobbyAckData,
   MatchCallAckData,
   MatchCallPayload,
@@ -28,17 +31,25 @@ import type {
   RoomJoinPayload,
   RoomJoinedAckData,
   ServerToClientEvents,
+  WalletLinkAckData,
+  WalletLinkPayload,
+  WalletNonceAckData,
 } from "../api/protocol.ts";
 import { recordEvent } from "../api/questStore.ts";
 import type { MatchState } from "../engine/index.ts";
 import { eventsFromCall } from "../quest/events.ts";
 import {
+  assertCanSetLoadout,
   callNumberInRoom,
   createRoom,
   exitRoom,
   getRoom,
   joinRoom,
+  MAX_LOADOUT_SIZE,
   type Room,
+  type RoomMode,
+  setPlayerLoadout,
+  setPlayerWallet,
   startDraft,
   submitBoard,
 } from "./rooms.ts";
@@ -46,6 +57,32 @@ import { lobbyView, matchViewFor } from "./views.ts";
 
 const MAX_NICKNAME_LENGTH = 24;
 const MAX_ROOM_CODE_LENGTH = 12;
+/** ~5 minutes - long enough for a wallet popup, short enough to bound replay risk. */
+const WALLET_NONCE_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * A thin, injectable stand-in for chain/reader.ts's `verifyLoadout` -
+ * deliberately NOT importing viem's PublicClient or anything chain-specific
+ * here so the realtime layer never hard-wires a real chain connection (unit
+ * tests inject a mock; production wiring - reading env/deployments and
+ * building a real viem client - lives in chain/defaultVerifier.ts and is
+ * wired in from index.ts). Structurally compatible with chain/reader.ts's
+ * `verifyLoadout` return shape, so a real one can be passed in as-is.
+ */
+export type LoadoutVerifier = (
+  owner: string,
+  skillIds: readonly number[],
+) => Promise<{ readonly valid: boolean; readonly reason?: string }>;
+
+export interface RealtimeServerOptions {
+  /**
+   * Verifies a candidate loadout against on-chain ownership. When absent,
+   * "standard" mode rooms (which require it) are rejected at room:create
+   * with a clear "chain belum dikonfigurasi" error - see index.ts for the
+   * production default (chain/defaultVerifier.ts).
+   */
+  readonly verifyLoadout?: LoadoutVerifier;
+}
 
 // -- wire types ---------------------------------------------------------
 //
@@ -56,9 +93,19 @@ const MAX_ROOM_CODE_LENGTH = 12;
 // handler actually sends/expects and what protocol.ts declares is a
 // compile error here, not a runtime surprise for FE.
 
+interface PendingWalletNonce {
+  readonly nonce: string;
+  readonly message: string;
+  readonly issuedAt: number;
+}
+
 interface SocketData {
   roomCode?: string;
   playerId?: string;
+  /** Linked wallet address (lowercased) - may be set before joining a room. */
+  walletAddress?: string;
+  /** Last-issued, not-yet-consumed nonce for this socket - see wallet:nonce/wallet:link. */
+  walletNonce?: PendingWalletNonce;
 }
 
 type RealtimeServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -106,23 +153,68 @@ function validateCalledNumber(value: unknown): number {
   return value;
 }
 
+function validateRoomMode(value: unknown): RoomMode {
+  if (value === undefined) return "casual";
+  if (value === "casual" || value === "standard") return value;
+  throw new Error('mode must be "casual" or "standard"');
+}
+
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const HEX_RE = /^0x[0-9a-fA-F]+$/;
+
+function validateWalletAddress(value: unknown): Address {
+  if (typeof value !== "string" || !ADDRESS_RE.test(value)) {
+    throw new Error("address must be a 0x-prefixed 20-byte hex address");
+  }
+  return value as Address;
+}
+
+function validateSignature(value: unknown): Hex {
+  if (typeof value !== "string" || !HEX_RE.test(value)) {
+    throw new Error("signature must be a 0x-prefixed hex string");
+  }
+  return value as Hex;
+}
+
+/** array of 0..MAX_LOADOUT_SIZE unique positive integers - shape-level only, ownership/active checks happen on-chain. */
+function validateSkillIdsArray(value: unknown): number[] {
+  if (!Array.isArray(value)) throw new Error("skillIds must be an array");
+  if (value.length > MAX_LOADOUT_SIZE) {
+    throw new Error(`skillIds must contain at most ${MAX_LOADOUT_SIZE} entries`);
+  }
+  const seen = new Set<number>();
+  const skillIds: number[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "number" || !Number.isInteger(entry) || entry < 1) {
+      throw new Error("skillIds must contain only positive integers");
+    }
+    if (seen.has(entry)) throw new Error("skillIds must not contain duplicates");
+    seen.add(entry);
+    skillIds.push(entry);
+  }
+  return skillIds;
+}
+
 /**
  * Wraps a handler so a bad/unexpected payload (wrong shape despite what the
- * protocol type promises, missing ack, or a thrown Error from downstream
- * logic) always turns into `ack({ ok: false, error })` instead of an
- * uncaught exception - Socket.IO event listeners don't catch synchronous
- * throws for you, and one bad payload should never take the whole server
+ * protocol type promises, missing ack, or a thrown Error / rejected Promise
+ * from downstream logic - including async ones like the chain-backed
+ * loadout:set) always turns into `ack({ ok: false, error })` instead of an
+ * uncaught exception - Socket.IO event listeners don't catch throws (sync
+ * or async) for you, and one bad payload should never take the whole server
  * down. `P`/`R` tie this to the exact payload/ack-data types protocol.ts
  * declares for the event being wrapped.
  */
-function safeHandler<P, R>(handler: (payload: P, ack: Ack<R>) => void): (payload: P, ack: Ack<R>) => void {
+function safeHandler<P, R>(
+  handler: (payload: P, ack: Ack<R>) => void | Promise<void>,
+): (payload: P, ack: Ack<R>) => void {
   return (payload, ack) => {
     const send: Ack<R> = typeof ack === "function" ? ack : (() => {}) as Ack<R>;
-    try {
-      handler(payload, send);
-    } catch (err) {
-      send({ ok: false, error: err instanceof Error ? err.message : "Unexpected server error" });
-    }
+    Promise.resolve()
+      .then(() => handler(payload, send))
+      .catch((err: unknown) => {
+        send({ ok: false, error: err instanceof Error ? err.message : "Unexpected server error" });
+      });
   };
 }
 
@@ -217,17 +309,22 @@ function processQuestEvents(io: RealtimeServer, prevMatch: MatchState, nextMatch
 
 // -- server ---------------------------------------------------------
 
-export function createRealtimeServer(httpServer: NodeHttpServer): RealtimeServer {
+export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeServerOptions = {}): RealtimeServer {
   const io: RealtimeServer = new Server(httpServer, {
     cors: { origin: "*" },
   });
+  const verifyLoadout = opts.verifyLoadout;
 
   io.on("connection", (socket) => {
     socket.on(
       "room:create",
       safeHandler<RoomCreatePayload, RoomJoinedAckData>((payload, ack) => {
         const nickname = validateNickname(payload?.nickname);
-        const { room, playerId } = createRoom(nickname);
+        const mode = validateRoomMode(payload?.mode);
+        if (mode === "standard" && !verifyLoadout) {
+          throw new Error('Chain belum dikonfigurasi - mode "standard" tidak tersedia');
+        }
+        const { room, playerId } = createRoom(nickname, { mode, wallet: socket.data.walletAddress });
         joinSocketToRoom(socket, room.code, playerId);
         ack({ ok: true, code: room.code, playerId, view: lobbyView(room) });
       }),
@@ -238,9 +335,80 @@ export function createRealtimeServer(httpServer: NodeHttpServer): RealtimeServer
       safeHandler<RoomJoinPayload, RoomJoinedAckData>((payload, ack) => {
         const code = validateRoomCode(payload?.code);
         const nickname = validateNickname(payload?.nickname);
-        const { room, playerId } = joinRoom(code, nickname);
+        const { room, playerId } = joinRoom(code, nickname, { wallet: socket.data.walletAddress });
         joinSocketToRoom(socket, room.code, playerId);
         ack({ ok: true, code: room.code, playerId, view: lobbyView(room) });
+        broadcastLobby(io, room);
+      }),
+    );
+
+    socket.on(
+      "wallet:nonce",
+      safeHandler<EmptyAckData, WalletNonceAckData>((_payload, ack) => {
+        const nonce = randomUUID();
+        const message = `TheBingoFi wallet link\nnonce: ${nonce}`;
+        socket.data.walletNonce = { nonce, message, issuedAt: Date.now() };
+        ack({ ok: true, nonce, message });
+      }),
+    );
+
+    socket.on(
+      "wallet:link",
+      safeHandler<WalletLinkPayload, WalletLinkAckData>(async (payload, ack) => {
+        const address = validateWalletAddress(payload?.address);
+        const signature = validateSignature(payload?.signature);
+
+        const pending = socket.data.walletNonce;
+        if (!pending) throw new Error("No nonce requested yet - call wallet:nonce first");
+        if (Date.now() - pending.issuedAt > WALLET_NONCE_TTL_MS) {
+          socket.data.walletNonce = undefined;
+          throw new Error("Nonce expired - call wallet:nonce again");
+        }
+
+        const isValid = await verifyMessage({ address, message: pending.message, signature });
+        if (!isValid) throw new Error("Signature does not match address for the issued nonce");
+
+        // Single-use: only consumed on success, so a failed attempt (e.g. a
+        // typo'd signature) can be retried against the same nonce - see
+        // server/API.md's "Wallet link" section.
+        socket.data.walletNonce = undefined;
+        const linkedAddress = address.toLowerCase();
+        socket.data.walletAddress = linkedAddress;
+        ack({ ok: true, address: linkedAddress });
+
+        const { roomCode, playerId } = socket.data;
+        if (roomCode && playerId) {
+          const room = getRoom(roomCode);
+          if (room) {
+            setPlayerWallet(room, playerId, linkedAddress);
+            broadcastLobby(io, room);
+          }
+        }
+      }),
+    );
+
+    socket.on(
+      "loadout:set",
+      safeHandler<LoadoutSetPayload, LobbyAckData>(async (payload, ack) => {
+        const ctx = requireSocketRoom(socket);
+        const skillIds = validateSkillIdsArray(payload?.skillIds);
+
+        const room = getRoom(ctx.roomCode);
+        if (!room) throw new Error(`Room ${ctx.roomCode} not found`);
+
+        const player = assertCanSetLoadout(room, ctx.playerId);
+        if (!verifyLoadout) {
+          throw new Error('Chain belum dikonfigurasi - mode "standard" tidak tersedia');
+        }
+
+        const verification = await verifyLoadout(player.wallet!, skillIds);
+        if (!verification.valid) {
+          ack({ ok: false, error: verification.reason ?? "Loadout is not valid for this wallet" });
+          return;
+        }
+
+        setPlayerLoadout(room, ctx.playerId, skillIds);
+        ack({ ok: true, view: lobbyView(room) });
         broadcastLobby(io, room);
       }),
     );

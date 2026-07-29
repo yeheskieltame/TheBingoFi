@@ -8,19 +8,28 @@
 
 import { countCompletedLines } from "../engine/index.ts";
 import type { Board } from "../engine/index.ts";
-import type { Room, RoomPhase } from "./rooms.ts";
+import type { Room, RoomMode, RoomPhase } from "./rooms.ts";
 
 export interface LobbyPlayerView {
   readonly playerId: string;
   readonly nickname: string;
   readonly connected: boolean;
   readonly hasSubmittedBoard: boolean;
+  /** Linked wallet address (lowercased), if any - see wallet:link. */
+  readonly wallet?: string;
+  /**
+   * Verified loadout (skill token ids), if set - see loadout:set. Public on
+   * purpose (CLAUDE.md: everyone sees opponents' picks); only board
+   * contents stay secret.
+   */
+  readonly loadout?: readonly number[];
 }
 
 export interface LobbyView {
   readonly code: string;
   readonly phase: RoomPhase;
   readonly hostId: string;
+  readonly mode: RoomMode;
   readonly players: readonly LobbyPlayerView[];
 }
 
@@ -30,11 +39,14 @@ export function lobbyView(room: Room): LobbyView {
     code: room.code,
     phase: room.phase,
     hostId: room.hostId,
+    mode: room.mode,
     players: room.players.map((player) => ({
       playerId: player.playerId,
       nickname: player.nickname,
       connected: player.connected,
       hasSubmittedBoard: player.board !== undefined,
+      wallet: player.wallet,
+      loadout: player.loadout,
     })),
   };
 }

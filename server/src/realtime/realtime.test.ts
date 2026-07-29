@@ -13,10 +13,11 @@ import assert from "node:assert/strict";
 import { createServer, type Server as NodeHttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
+import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 
 import { BOARD_SIZE } from "../engine/index.ts";
 import { exampleQuests } from "../quest/index.ts";
-import { createRealtimeServer } from "./server.ts";
+import { createRealtimeServer, type LoadoutVerifier, type RealtimeServerOptions } from "./server.ts";
 
 type AckResponse = ({ ok: true } & Record<string, unknown>) | { ok: false; error: string };
 
@@ -76,6 +77,49 @@ function connectClient(): Promise<ClientSocket> {
     socket.once("connect", () => resolve(socket));
     socket.once("connect_error", reject);
   });
+}
+
+/**
+ * Runs `body` against a freshly created, fully independent realtime server
+ * (its own httpServer/port/sockets, closed in a `finally`) rather than the
+ * shared beforeEach/afterEach one above - needed for tests that require a
+ * specific `RealtimeServerOptions` (a mock LoadoutVerifier, or none at all),
+ * which the shared server (always created with no opts) can't provide.
+ */
+async function withServer<T>(
+  opts: RealtimeServerOptions,
+  body: (ctx: { connect: () => Promise<ClientSocket> }) => Promise<T>,
+): Promise<T> {
+  const srv = createServer();
+  createRealtimeServer(srv, opts);
+  await new Promise<void>((resolve) => srv.listen(0, resolve));
+  const srvPort = (srv.address() as AddressInfo).port;
+  const localSockets: ClientSocket[] = [];
+
+  const connect = (): Promise<ClientSocket> =>
+    new Promise((resolve, reject) => {
+      const socket = ioClient(`http://localhost:${srvPort}`, { reconnection: false, forceNew: true });
+      localSockets.push(socket);
+      socket.once("connect", () => resolve(socket));
+      socket.once("connect_error", reject);
+    });
+
+  try {
+    return await body({ connect });
+  } finally {
+    for (const socket of localSockets) socket.disconnect();
+    await new Promise<void>((resolve) => srv.close(() => resolve()));
+  }
+}
+
+/** wallet:nonce -> sign the returned message -> wallet:link, in one call. Returns the wallet:link ack. */
+async function linkWallet(socket: ClientSocket, account: PrivateKeyAccount): Promise<AckResponse> {
+  const nonceRes = await emit(socket, "wallet:nonce", {});
+  assert.equal(nonceRes.ok, true, `wallet:nonce should succeed: ${JSON.stringify(nonceRes)}`);
+  if (!nonceRes.ok) throw new Error("unreachable");
+  const message = nonceRes.message as string;
+  const signature = await account.signMessage({ message });
+  return emit(socket, "wallet:link", { address: account.address, signature });
 }
 
 interface TwoPlayerMatch {
@@ -268,4 +312,315 @@ test("the winner receives quest:completed for the daily win-1-match quest", asyn
   const winQuestPayload = questsCompleted.find((q) => q.questId === dailyWinQuest!.id);
   assert.ok(winQuestPayload, `expected a quest:completed for ${dailyWinQuest!.id}, got: ${JSON.stringify(questsCompleted)}`);
   assert.equal(winQuestPayload.title, dailyWinQuest!.title);
+});
+
+// -- wallet link ----------------------------------------------------------
+//
+// Real signature flow, no chain involved: wallet:link only needs viem's
+// standalone verifyMessage (pure signature recovery), so these use real
+// viem accounts (privateKeyToAccount + signMessage) end-to-end against the
+// shared default server (no verifyLoadout needed for wallet:link itself).
+
+test("wallet:nonce then wallet:link with a valid signature succeeds and lowercases the address", async () => {
+  const socket = await connectClient();
+  const account = privateKeyToAccount(generatePrivateKey());
+
+  const linkRes = await linkWallet(socket, account);
+  assert.equal(linkRes.ok, true, `expected success, got: ${JSON.stringify(linkRes)}`);
+  if (!linkRes.ok) throw new Error("unreachable");
+  assert.equal(linkRes.address, account.address.toLowerCase());
+});
+
+test("wallet:link rejects a signature from a different key than the claimed address", async () => {
+  const socket = await connectClient();
+  const claimedAccount = privateKeyToAccount(generatePrivateKey());
+  const signerAccount = privateKeyToAccount(generatePrivateKey());
+
+  const nonceRes = await emit(socket, "wallet:nonce", {});
+  assert.equal(nonceRes.ok, true);
+  if (!nonceRes.ok) throw new Error("unreachable");
+  const message = nonceRes.message as string;
+  const signature = await signerAccount.signMessage({ message });
+
+  const linkRes = await emit(socket, "wallet:link", { address: claimedAccount.address, signature });
+  assert.equal(linkRes.ok, false);
+  if (linkRes.ok) throw new Error("unreachable");
+  assert.match(linkRes.error, /signature/i);
+});
+
+test("wallet:link rejects a corrupted signature", async () => {
+  const socket = await connectClient();
+  const account = privateKeyToAccount(generatePrivateKey());
+
+  const nonceRes = await emit(socket, "wallet:nonce", {});
+  assert.equal(nonceRes.ok, true);
+  if (!nonceRes.ok) throw new Error("unreachable");
+  const message = nonceRes.message as string;
+  const validSignature = await account.signMessage({ message });
+  // Flip the last hex character - still well-formed hex, just cryptographically wrong.
+  const lastChar = validSignature.at(-1)!;
+  const flippedChar = lastChar === "0" ? "1" : "0";
+  const corruptedSignature = validSignature.slice(0, -1) + flippedChar;
+
+  const linkRes = await emit(socket, "wallet:link", { address: account.address, signature: corruptedSignature });
+  assert.equal(linkRes.ok, false);
+});
+
+test("wallet:link without a prior wallet:nonce is rejected", async () => {
+  const socket = await connectClient();
+  const account = privateKeyToAccount(generatePrivateKey());
+  const signature = await account.signMessage({ message: "TheBingoFi wallet link\nnonce: made-up" });
+
+  const linkRes = await emit(socket, "wallet:link", { address: account.address, signature });
+  assert.equal(linkRes.ok, false);
+  if (linkRes.ok) throw new Error("unreachable");
+  assert.match(linkRes.error, /nonce/i);
+});
+
+test("a nonce cannot be replayed: a second wallet:link after a successful one fails", async () => {
+  const socket = await connectClient();
+  const account = privateKeyToAccount(generatePrivateKey());
+
+  const nonceRes = await emit(socket, "wallet:nonce", {});
+  assert.equal(nonceRes.ok, true);
+  if (!nonceRes.ok) throw new Error("unreachable");
+  const message = nonceRes.message as string;
+  const signature = await account.signMessage({ message });
+
+  const first = await emit(socket, "wallet:link", { address: account.address, signature });
+  assert.equal(first.ok, true);
+
+  // Same signature/message, no new wallet:nonce requested in between.
+  const replay = await emit(socket, "wallet:link", { address: account.address, signature });
+  assert.equal(replay.ok, false);
+  if (replay.ok) throw new Error("unreachable");
+  assert.match(replay.error, /nonce/i);
+});
+
+test("wallet:link before room:create carries the wallet into the new room's LobbyView", async () => {
+  const socket = await connectClient();
+  const account = privateKeyToAccount(generatePrivateKey());
+
+  const linkRes = await linkWallet(socket, account);
+  assert.equal(linkRes.ok, true);
+
+  const created = await emit(socket, "room:create", { nickname: "Alice" });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error("unreachable");
+  const view = created.view as { players: { wallet?: string }[] };
+  assert.equal(view.players[0]!.wallet, account.address.toLowerCase());
+});
+
+test("wallet:link after already joining a room updates and broadcasts room:state with the wallet", async () => {
+  const host = await connectClient();
+  const guest = await connectClient();
+  const account = privateKeyToAccount(generatePrivateKey());
+
+  const created = await emit(host, "room:create", { nickname: "Host" });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error("unreachable");
+  const code = created.code as string;
+
+  // room:join itself triggers a room:state broadcast to everyone already in
+  // the channel (including the joiner) - drain that one first so the
+  // listener below can't race against it and resolve early with stale
+  // (pre-link) state. See setupTwoPlayerMatch's comment for the same
+  // pattern (attach-before-trigger) applied to match:state.
+  const joinBroadcast = waitForEvent(guest, "room:state");
+  await emit(guest, "room:join", { code, nickname: "Guest" });
+  await joinBroadcast;
+
+  const roomStatePromise = waitForEvent<{ players: { playerId: string; wallet?: string }[] }>(guest, "room:state");
+  const linkRes = await linkWallet(host, account);
+  assert.equal(linkRes.ok, true);
+
+  const roomState = await roomStatePromise;
+  const hostPlayerId = created.playerId as string;
+  const hostEntry = roomState.players.find((p) => p.playerId === hostPlayerId);
+  assert.equal(hostEntry?.wallet, account.address.toLowerCase());
+});
+
+// -- mode + loadout ---------------------------------------------------------
+//
+// These use withServer(...) rather than the shared default server, since
+// each needs its own RealtimeServerOptions (a mock LoadoutVerifier, or none
+// at all to prove "standard" is rejected without one).
+
+test('room:create with mode "standard" is rejected when no verifyLoadout is configured', async () => {
+  await withServer({}, async ({ connect }) => {
+    const socket = await connect();
+    const res = await emit(socket, "room:create", { nickname: "Host", mode: "standard" });
+    assert.equal(res.ok, false);
+    if (res.ok) throw new Error("unreachable");
+    assert.match(res.error, /chain/i);
+  });
+});
+
+test('room:create with mode "standard" succeeds when a verifyLoadout is configured, and defaults to "casual" otherwise', async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer({ verifyLoadout }, async ({ connect }) => {
+    const socket = await connect();
+
+    const standardRes = await emit(socket, "room:create", { nickname: "Host", mode: "standard" });
+    assert.equal(standardRes.ok, true);
+    if (!standardRes.ok) throw new Error("unreachable");
+    assert.equal((standardRes.view as { mode: string }).mode, "standard");
+
+    const casualSocket = await connect();
+    const casualRes = await emit(casualSocket, "room:create", { nickname: "Host2" });
+    assert.equal(casualRes.ok, true);
+    if (!casualRes.ok) throw new Error("unreachable");
+    assert.equal((casualRes.view as { mode: string }).mode, "casual");
+  });
+});
+
+test("loadout:set succeeds against a mock verifier and is broadcast (publicly) to every player in the room", async () => {
+  const verifyLoadout: LoadoutVerifier = async (_owner, skillIds) => {
+    assert.deepEqual(skillIds, [1, 2]);
+    return { valid: true };
+  };
+
+  await withServer({ verifyLoadout }, async ({ connect }) => {
+    const host = await connect();
+    const guest = await connect();
+    const account = privateKeyToAccount(generatePrivateKey());
+
+    await linkWallet(host, account);
+    const created = await emit(host, "room:create", { nickname: "Host", mode: "standard" });
+    assert.equal(created.ok, true);
+    if (!created.ok) throw new Error("unreachable");
+    const code = created.code as string;
+
+    // Drain the join-triggered room:state broadcast before attaching the
+    // listener for the loadout:set one - see the identical comment in the
+    // wallet:link-after-joining test above.
+    const joinBroadcast = waitForEvent(guest, "room:state");
+    await emit(guest, "room:join", { code, nickname: "Guest" });
+    await joinBroadcast;
+
+    const guestRoomState = waitForEvent<{ players: { playerId: string; loadout?: number[] }[] }>(
+      guest,
+      "room:state",
+    );
+    const setRes = await emit(host, "loadout:set", { skillIds: [1, 2] });
+    assert.equal(setRes.ok, true, `expected success, got: ${JSON.stringify(setRes)}`);
+    if (!setRes.ok) throw new Error("unreachable");
+    const hostPlayerId = created.playerId as string;
+    const setView = setRes.view as { players: { playerId: string; loadout?: number[] }[] };
+    assert.deepEqual(setView.players.find((p) => p.playerId === hostPlayerId)?.loadout, [1, 2]);
+
+    // The guest (who never set a loadout) also sees the host's picks - public by design.
+    const guestState = await guestRoomState;
+    assert.deepEqual(guestState.players.find((p) => p.playerId === hostPlayerId)?.loadout, [1, 2]);
+  });
+});
+
+test("loadout:set is rejected in a casual room", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer({ verifyLoadout }, async ({ connect }) => {
+    const socket = await connect();
+    const account = privateKeyToAccount(generatePrivateKey());
+    await linkWallet(socket, account);
+    await emit(socket, "room:create", { nickname: "Host" }); // mode defaults to "casual"
+
+    const res = await emit(socket, "loadout:set", { skillIds: [1] });
+    assert.equal(res.ok, false);
+    if (res.ok) throw new Error("unreachable");
+    assert.match(res.error, /standard/i);
+  });
+});
+
+test("loadout:set is rejected without a linked wallet", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer({ verifyLoadout }, async ({ connect }) => {
+    const socket = await connect();
+    await emit(socket, "room:create", { nickname: "Host", mode: "standard" });
+
+    const res = await emit(socket, "loadout:set", { skillIds: [1] });
+    assert.equal(res.ok, false);
+    if (res.ok) throw new Error("unreachable");
+    assert.match(res.error, /wallet/i);
+  });
+});
+
+test("loadout:set is rejected with more than 2 skillIds", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer({ verifyLoadout }, async ({ connect }) => {
+    const socket = await connect();
+    const account = privateKeyToAccount(generatePrivateKey());
+    await linkWallet(socket, account);
+    await emit(socket, "room:create", { nickname: "Host", mode: "standard" });
+
+    const res = await emit(socket, "loadout:set", { skillIds: [1, 2, 3] });
+    assert.equal(res.ok, false);
+    if (res.ok) throw new Error("unreachable");
+    assert.match(res.error, /at most 2/i);
+  });
+});
+
+test("loadout:set surfaces the chain verifier's rejection reason", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: false, reason: "Skill 9 is not owned by this address" });
+  await withServer({ verifyLoadout }, async ({ connect }) => {
+    const socket = await connect();
+    const account = privateKeyToAccount(generatePrivateKey());
+    await linkWallet(socket, account);
+    await emit(socket, "room:create", { nickname: "Host", mode: "standard" });
+
+    const res = await emit(socket, "loadout:set", { skillIds: [9] });
+    assert.equal(res.ok, false);
+    if (res.ok) throw new Error("unreachable");
+    assert.equal(res.error, "Skill 9 is not owned by this address");
+  });
+});
+
+test("loadout:set is rejected once the match has started (playing phase)", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer({ verifyLoadout }, async ({ connect }) => {
+    const host = await connect();
+    const guest = await connect();
+    const account = privateKeyToAccount(generatePrivateKey());
+    await linkWallet(host, account);
+
+    const created = await emit(host, "room:create", { nickname: "Host", mode: "standard" });
+    assert.equal(created.ok, true);
+    if (!created.ok) throw new Error("unreachable");
+    const code = created.code as string;
+    await emit(guest, "room:join", { code, nickname: "Guest" });
+
+    await emit(host, "loadout:set", { skillIds: [1] });
+    await emit(host, "draft:start", {});
+    await emit(host, "draft:submit", { numbers: identityBoard() });
+    await emit(guest, "draft:submit", { numbers: shiftedBoard() });
+
+    const res = await emit(host, "loadout:set", { skillIds: [2] });
+    assert.equal(res.ok, false);
+    if (res.ok) throw new Error("unreachable");
+    assert.match(res.error, /phase/i);
+  });
+});
+
+test("a player without a loadout can still draft and play a full match in a standard room", async () => {
+  const verifyLoadout: LoadoutVerifier = async () => ({ valid: true });
+  await withServer({ verifyLoadout }, async ({ connect }) => {
+    const host = await connect();
+    const guest = await connect();
+    const account = privateKeyToAccount(generatePrivateKey());
+    await linkWallet(host, account);
+
+    const created = await emit(host, "room:create", { nickname: "Host", mode: "standard" });
+    assert.equal(created.ok, true);
+    if (!created.ok) throw new Error("unreachable");
+    const code = created.code as string;
+    await emit(guest, "room:join", { code, nickname: "Guest" }); // guest: no wallet, no loadout
+
+    await emit(host, "loadout:set", { skillIds: [1] });
+    await emit(host, "draft:start", {});
+    const hostSubmit = await emit(host, "draft:submit", { numbers: identityBoard() });
+    assert.equal(hostSubmit.ok, true);
+    const guestSubmit = await emit(guest, "draft:submit", { numbers: shiftedBoard() });
+    assert.equal(guestSubmit.ok, true, "player without a loadout must still be able to submit a board and play");
+
+    const callRes = await emit(host, "match:call", { number: 1 });
+    assert.equal(callRes.ok, true);
+  });
 });

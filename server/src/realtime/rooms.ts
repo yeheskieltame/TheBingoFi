@@ -32,13 +32,31 @@ export const MAX_PLAYERS = 8;
 const ROOM_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
 export type RoomPhase = "lobby" | "draft" | "playing" | "finished";
-export type RoomMode = "casual";
+/**
+ * "casual" (default) has no skill loadout. "standard" enables loadout:set
+ * (CLAUDE.md's Mode section - "Standard" has a loadout, "Ranked" not
+ * implemented yet). Chosen at room:create; fixed for the room's lifetime.
+ */
+export type RoomMode = "casual" | "standard";
+
+/**
+ * Max skills a loadout may contain - mirrors chain/reader.ts's
+ * MAX_LOADOUT_SIZE (CLAUDE.md: "Max 2 skill per loadout"). Kept as its own
+ * constant rather than importing chain/reader.ts here so this module stays
+ * entirely chain-agnostic (see server.ts's LoadoutVerifier for the DI
+ * boundary that actually talks to chain).
+ */
+export const MAX_LOADOUT_SIZE = 2;
 
 export interface RoomPlayer {
   readonly playerId: string;
   nickname: string;
   board?: Board;
   connected: boolean;
+  /** Linked wallet address (lowercased) - set via wallet:link, see server.ts. */
+  wallet?: string;
+  /** On-chain-verified loadout (skill token ids) - set via loadout:set, "standard" mode only. */
+  loadout?: readonly number[];
 }
 
 export interface Room {
@@ -80,26 +98,42 @@ export function getRoom(code: string): Room | undefined {
   return rooms.get(code);
 }
 
+export interface CreateRoomOptions {
+  /** Defaults to "casual". */
+  readonly mode?: RoomMode;
+  /** Wallet already linked on this socket (via wallet:link) before creating the room, if any. */
+  readonly wallet?: string;
+}
+
 /** Creates a new lobby with `nickname` as the sole player and host. */
-export function createRoom(nickname: string): { room: Room; playerId: string } {
+export function createRoom(nickname: string, opts: CreateRoomOptions = {}): { room: Room; playerId: string } {
   const playerId = randomUUID();
   const code = generateRoomCode();
   const room: Room = {
     code,
     hostId: playerId,
-    mode: "casual",
-    players: [{ playerId, nickname, connected: true }],
+    mode: opts.mode ?? "casual",
+    players: [{ playerId, nickname, connected: true, wallet: opts.wallet }],
     phase: "lobby",
   };
   rooms.set(code, room);
   return { room, playerId };
 }
 
+export interface JoinRoomOptions {
+  /** Wallet already linked on this socket (via wallet:link) before joining the room, if any. */
+  readonly wallet?: string;
+}
+
 /**
  * Joins an existing room. Only allowed while the room is still accepting
  * players (lobby or draft) and not yet full (MAX_PLAYERS).
  */
-export function joinRoom(code: string, nickname: string): { room: Room; playerId: string } {
+export function joinRoom(
+  code: string,
+  nickname: string,
+  opts: JoinRoomOptions = {},
+): { room: Room; playerId: string } {
   const room = requireRoom(code);
 
   if (room.phase !== "lobby" && room.phase !== "draft") {
@@ -110,7 +144,7 @@ export function joinRoom(code: string, nickname: string): { room: Room; playerId
   }
 
   const playerId = randomUUID();
-  room.players.push({ playerId, nickname, connected: true });
+  room.players.push({ playerId, nickname, connected: true, wallet: opts.wallet });
   return { room, playerId };
 }
 
@@ -183,6 +217,52 @@ export function submitBoard(code: string, playerId: string, numbers: readonly nu
   }
 
   return room;
+}
+
+// -- wallet / loadout ---------------------------------------------------
+//
+// Wallet linking itself (nonce issuance, signature verification) lives in
+// server.ts - it's a socket-level concern (nonce is per-socket, may happen
+// before a player has even joined a room) rather than room state. This
+// module only owns attaching the *result* (address, verified loadout) to a
+// RoomPlayer, plus the invariants around when a loadout may be set.
+
+/** Attaches a linked wallet address to a player already in this room. */
+export function setPlayerWallet(room: Room, playerId: string, wallet: string): void {
+  const player = requirePlayer(room, playerId);
+  player.wallet = wallet;
+}
+
+/**
+ * Throws unless `playerId` is currently allowed to set/change a loadout in
+ * `room`: "standard" mode only, lobby/draft phase only (frozen once
+ * "playing" starts - CLAUDE.md: "Loadout dibekukan saat match mulai"), and
+ * only after wallet:link. Returns the player so callers (server.ts) don't
+ * need a second lookup before calling the async on-chain verifier.
+ */
+export function assertCanSetLoadout(room: Room, playerId: string): RoomPlayer {
+  if (room.mode !== "standard") {
+    throw new Error(`loadout:set is only available in "standard" mode rooms (this room is "${room.mode}")`);
+  }
+  if (room.phase !== "lobby" && room.phase !== "draft") {
+    throw new Error(`Cannot set loadout outside lobby/draft phase (current phase: "${room.phase}")`);
+  }
+  const player = requirePlayer(room, playerId);
+  if (!player.wallet) {
+    throw new Error("Wallet must be linked (wallet:link) before setting a loadout");
+  }
+  return player;
+}
+
+/**
+ * Records a player's on-chain-verified loadout. Call only after
+ * assertCanSetLoadout AND a successful chain verification - this function
+ * itself does not re-check either, by design (see server.ts's loadout:set
+ * handler, which is the only caller).
+ */
+export function setPlayerLoadout(room: Room, playerId: string, skillIds: readonly number[]): void {
+  const player = requirePlayer(room, playerId);
+  player.loadout = skillIds;
 }
 
 export interface CallNumberResult {
