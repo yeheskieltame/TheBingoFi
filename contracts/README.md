@@ -136,11 +136,19 @@ Wiring role (dari `script/Deploy.s.sol`):
 2. Dari folder `contracts/`:
 
    ```bash
-   forge script script/Deploy.s.sol --rpc-url giwa_sepolia --broadcast
+   forge script script/Deploy.s.sol --rpc-url giwa_sepolia --broadcast \
+     --verify --verifier blockscout --verifier-url https://sepolia-explorer.giwa.io/api
    ```
 
    (`giwa_sepolia` sudah didefinisikan di `foundry.toml` → `https://sepolia-rpc.giwa.io/`,
    rate-limited, jangan untuk production traffic tinggi.)
+
+   **Verifikasi**: GIWA Sepolia (chain 91342) belum terdaftar di Etherscan API v2
+   (cek `https://api.etherscan.io/v2/chainlist`), explorer-nya adalah **Blockscout**
+   — jadi verify lewat Blockscout API seperti flag di atas, tanpa API key. Kalau
+   deploy sudah terlanjur tanpa `--verify`, susulkan per kontrak dengan
+   `forge verify-contract <address> <Contract> --verifier blockscout --verifier-url
+   https://sepolia-explorer.giwa.io/api --chain 91342`.
 
 3. Setelah broadcast sukses, script otomatis menulis
    `deployments/91342.json` (chain ID GIWA Sepolia) berisi address ke-4
