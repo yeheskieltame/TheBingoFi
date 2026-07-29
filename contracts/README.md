@@ -5,6 +5,88 @@ TheBingoFi. Sesuai prinsip arsitektur di root `CLAUDE.md`: **on-chain = ownershi
 & katalog; off-chain = seluruh gameplay**. Tidak ada mekanik taruhan/pot/stake
 apa pun di sini — hanya primary sale NFT.
 
+## Peta Arsitektur & Interaksi
+
+Siapa boleh manggil apa, dan ke mana alurnya:
+
+```mermaid
+flowchart TB
+    Platform(["Platform admin<br/>(CREATOR_ROLE)"])
+    Buyer(["Pembeli<br/>(siapa saja, wallet)"])
+    Treasury(["Treasury<br/>(penampung revenue)"])
+
+    subgraph OnChain["GIWA L2 (on-chain)"]
+        Factory["SkillFactory<br/><i>entry point rilis skill</i>"]
+        Registry["SkillRegistry<br/><i>katalog SkillDef</i>"]
+        Market["Marketplace<br/><i>primary sale</i>"]
+        Collection["SkillCollection<br/><i>ERC-1155 + royalti 5%</i>"]
+    end
+
+    subgraph OffChain["Off-chain (read-only ke chain)"]
+        Server["Game Server"]
+        FE["Web FE (wagmi/viem)"]
+    end
+
+    Platform -- "createSkill(def, maxSupply, price)" --> Factory
+    Factory -- "register(def)<br/>[REGISTRAR_ROLE]" --> Registry
+    Factory -- "createSale(id, price, supply)<br/>[LISTER_ROLE]" --> Market
+    Buyer -- "buy(skillId, amount)<br/>+ ETH = price × amount" --> Market
+    Market -- "mint(buyer, id, amount)<br/>[MINTER_ROLE]" --> Collection
+    Market -- "withdraw()" --> Treasury
+
+    Server -. "getSkill / balanceOfBatch<br/>(verifikasi loadout)" .-> Registry
+    Server -.-> Collection
+    FE -. "sales / uri / royaltyInfo" .-> Market
+    FE -.-> Collection
+```
+
+Garis putus-putus = **read-only** (tidak pernah ada tx dari server/FE saat gameplay).
+Setiap panah penuh dijaga role — tidak ada jalur lain: satu-satunya cara token
+tercetak adalah pembelian lewat Marketplace, dan satu-satunya cara skill masuk
+katalog adalah `createSkill` di Factory.
+
+### Alur rilis skill baru (platform, 1 transaksi)
+
+```mermaid
+sequenceDiagram
+    actor P as Platform (CREATOR_ROLE)
+    participant F as SkillFactory
+    participant R as SkillRegistry
+    participant M as Marketplace
+
+    P->>F: createSkill(def, maxSupply, price)
+    F->>R: register(def) [REGISTRAR_ROLE]
+    R->>R: skillId = nextSkillId++<br/>simpan SkillDef
+    R-->>F: skillId
+    R-->>R: emit SkillRegistered
+    F->>M: createSale(skillId, price, maxSupply) [LISTER_ROLE]
+    M->>M: sales[skillId] = Sale(aktif)
+    M-->>M: emit SaleCreated
+    F-->>F: emit SkillCreated
+    F-->>P: skillId
+    Note over R,M: Skill terdaftar DAN sale terbuka<br/>dalam satu tx — tanpa deploy kontrak baru
+```
+
+### Alur pembelian (user)
+
+```mermaid
+sequenceDiagram
+    actor B as Pembeli
+    participant M as Marketplace
+    participant C as SkillCollection
+    participant I as Indexer / Game Server
+
+    B->>M: sales(skillId) — baca price (call, gratis)
+    B->>M: buy(skillId, amount) + msg.value = price × amount
+    M->>M: cek: sale ada? aktif? stok cukup?<br/>bayaran pas? (revert kalau tidak)
+    M->>M: minted += amount (efek dulu — CEI)
+    M->>C: mint(buyer, skillId, amount) [MINTER_ROLE]
+    C-->>I: emit TransferSingle (mint)
+    M-->>I: emit Purchased(skillId, buyer, amount, paid)
+    Note over I: server refresh entitlement wallet →<br/>skill langsung bisa dipakai di loadout
+    Note over M: ETH tertahan di kontrak sampai<br/>withdraw() → treasury (siapa pun boleh trigger)
+```
+
 ## Ringkasan 4 Kontrak
 
 | Kontrak | Peran |
@@ -92,7 +174,7 @@ Detail format ada di `deployments/README.md`.
 
 ```bash
 forge build   # compile
-forge test    # unit test (28 test, wajib hijau semua sebelum ubah src/)
+forge test    # unit test (34 test, wajib hijau semua sebelum ubah src/)
 forge fmt     # format
 ```
 
