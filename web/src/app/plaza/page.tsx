@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useMemo, useState } from "react";
 
 import PlazaMessageList from "@/components/PlazaMessageList";
@@ -81,18 +80,6 @@ export default function PlazaPage() {
 
   return (
     <main className="mx-auto max-w-2xl space-y-4 py-6">
-      {/* Latar art satu halaman, sama dengan /, /play, /daily, /quests, /market. */}
-      <div aria-hidden className="fixed inset-0 -z-10">
-        <Image
-          src="/images/background/bg.png"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-top"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-night/50 via-night/80 to-night" />
-      </div>
 
       <header className="text-center">
         <h1 className="font-display text-2xl font-bold tracking-tight text-frost sm:text-3xl">{t.title}</h1>

@@ -1,7 +1,6 @@
 "use client";
 
 import { CELL_SWAP, MIN_PLAYERS, WILD_DAUB } from "@thebingofi/server/engine";
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
@@ -162,19 +161,6 @@ function PlayScreen() {
 
   return (
     <main className="mx-auto max-w-3xl space-y-5 py-4">
-      {/* Latar art yang sama dengan landing supaya perpindahan / -> /play tidak
-          terasa ganti aplikasi. Fixed, jadi tidak ikut scroll saat match panjang. */}
-      <div aria-hidden className="fixed inset-0 -z-10">
-        <Image
-          src="/images/background/bg.png"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-top"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-night/45 via-night/80 to-night" />
-      </div>
 
       <h1 className="text-center font-display text-2xl font-bold tracking-tight text-frost">{t.title}</h1>
 
