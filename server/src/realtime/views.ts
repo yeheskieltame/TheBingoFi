@@ -8,7 +8,7 @@
 
 import { countCompletedLinesForPlayer } from "../engine/index.ts";
 import type { Board, SkillInstance } from "../engine/index.ts";
-import type { Room, RoomMode, RoomPhase } from "./rooms.ts";
+import type { Room, RoomMode, RoomPhase, RoomVisibility } from "./rooms.ts";
 
 export interface LobbyPlayerView {
   readonly playerId: string;
@@ -23,6 +23,8 @@ export interface LobbyPlayerView {
    * contents stay secret.
    */
   readonly loadout?: readonly number[];
+  /** True for the VS Bot seat (CONCEPT.md §2b) - lets FE style/icon the entry; the difficulty itself is already legible from `nickname` ("Bot Lv3"). */
+  readonly isBot: boolean;
 }
 
 export interface LobbyView {
@@ -30,6 +32,10 @@ export interface LobbyView {
   readonly phase: RoomPhase;
   readonly hostId: string;
   readonly mode: RoomMode;
+  /** Room capacity, 2-5 - pair with `players.length` to render "2/4" slot counts. */
+  readonly maxPlayers: number;
+  /** "public" rooms are discoverable via room:list/room:quick; "private" are code-only. */
+  readonly visibility: RoomVisibility;
   readonly players: readonly LobbyPlayerView[];
 }
 
@@ -40,6 +46,8 @@ export function lobbyView(room: Room): LobbyView {
     phase: room.phase,
     hostId: room.hostId,
     mode: room.mode,
+    maxPlayers: room.maxPlayers,
+    visibility: room.visibility,
     players: room.players.map((player) => ({
       playerId: player.playerId,
       nickname: player.nickname,
@@ -47,7 +55,35 @@ export function lobbyView(room: Room): LobbyView {
       hasSubmittedBoard: player.board !== undefined,
       wallet: player.wallet,
       loadout: player.loadout,
+      isBot: room.bot?.playerId === player.playerId,
     })),
+  };
+}
+
+export interface RoomSummary {
+  readonly code: string;
+  readonly hostNickname: string;
+  readonly playerCount: number;
+  readonly maxPlayers: number;
+  readonly mode: RoomMode;
+}
+
+/**
+ * Room Browser entry (CONCEPT.md §2b, `room:list`) - deliberately minimal:
+ * no player list, no board/match state, nothing that would help anyone
+ * infer what's inside before joining. Only ever called on rooms
+ * rooms.ts's listJoinableRooms already filtered to "public" - this
+ * function has no visibility check of its own, so it must never be called
+ * on a private room.
+ */
+export function roomSummaryView(room: Room): RoomSummary {
+  const host = room.players.find((player) => player.playerId === room.hostId);
+  return {
+    code: room.code,
+    hostNickname: host?.nickname ?? "",
+    playerCount: room.players.length,
+    maxPlayers: room.maxPlayers,
+    mode: room.mode,
   };
 }
 

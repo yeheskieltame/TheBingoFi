@@ -41,6 +41,15 @@ function PlayScreen() {
   const wallet = useWallet();
   const attemptedJoin = useRef(false);
 
+  // Quick Match / VS Bot / manual-create entry params (set by "/" - see
+  // app/page.tsx). Only one of code/quick/bot/maxPlayers+public is ever set
+  // for a given navigation, consumed once on mount below - same pattern as
+  // the existing `code` query param.
+  const quickSizeParam = searchParams.get("quick");
+  const botLevelParam = searchParams.get("bot");
+  const maxPlayersParam = searchParams.get("maxPlayers");
+  const isPublicParam = searchParams.get("public") === "1";
+
   // Once room:state arrives the server is authoritative on `mode` (joining
   // via code, the room may already be "standard" regardless of the ?mode=
   // this tab was opened with) - the query param only decides what a fresh
@@ -71,8 +80,15 @@ function PlayScreen() {
 
     if (code) {
       room.joinRoom(code, nickname);
+    } else if (quickSizeParam) {
+      room.quickMatch(nickname, Number(quickSizeParam));
+    } else if (botLevelParam) {
+      room.createBotRoom(nickname, Number(botLevelParam));
     } else {
-      room.createRoom(nickname, requestedMode === "standard" ? "standard" : undefined);
+      room.createRoom(nickname, requestedMode === "standard" ? "standard" : undefined, {
+        maxPlayers: maxPlayersParam ? Number(maxPlayersParam) : undefined,
+        isPublic: isPublicParam,
+      });
     }
     // Run once on mount only - re-running on every render would re-create/re-join.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -83,15 +99,33 @@ function PlayScreen() {
     router.push("/");
   }
 
-  /** Rematch: leave the finished room and immediately create a fresh one of the same mode, staying on /play. Both emits share one ordered socket connection, so the server always sees room:leave before room:create. */
+  /**
+   * Rematch: leave the finished room and immediately start a fresh one of
+   * the SAME kind (Quick Match/VS Bot/manual create), staying on /play.
+   * Both emits share one ordered socket connection, so the server always
+   * sees room:leave before the next room:create/quick/createBot. Reuses
+   * entryKind from the just-left room (captured before leaveRoom's
+   * ack resets it) rather than the URL's ?mode= alone, so e.g. "Main Lagi"
+   * after a VS Bot match starts another bot match instead of a plain room.
+   */
   function handlePlayAgain() {
     const nickname = getStoredNickname();
     if (!nickname) {
       router.push("/");
       return;
     }
+    const entryKind = room.state.entryKind;
     room.leaveRoom();
-    room.createRoom(nickname, mode === "standard" ? "standard" : undefined);
+    if (entryKind === "quick" && quickSizeParam) {
+      room.quickMatch(nickname, Number(quickSizeParam));
+    } else if (entryKind === "bot" && botLevelParam) {
+      room.createBotRoom(nickname, Number(botLevelParam));
+    } else {
+      room.createRoom(nickname, mode === "standard" ? "standard" : undefined, {
+        maxPlayers: maxPlayersParam ? Number(maxPlayersParam) : undefined,
+        isPublic: isPublicParam,
+      });
+    }
   }
 
   /** Skill button clicked in SkillPanel: WILD_DAUB/CELL_SWAP need extra board clicks first (see MatchBoard's skillSelection), DOUBLE_CALL/GHOST_CALL cast immediately with no args. */
@@ -155,6 +189,9 @@ function PlayScreen() {
           players={room.state.lobby.players}
           hostId={room.state.lobby.hostId}
           mode={room.state.lobby.mode}
+          maxPlayers={room.state.lobby.maxPlayers}
+          visibility={room.state.lobby.visibility}
+          isQuickMatch={room.state.entryKind === "quick"}
           playerId={room.state.playerId ?? ""}
           isHost={isHost}
           canStart={room.state.lobby.players.length >= MIN_PLAYERS}

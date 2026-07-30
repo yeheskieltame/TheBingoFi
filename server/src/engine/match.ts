@@ -25,7 +25,7 @@ import { type Board, MAX_NUMBER, MIN_NUMBER, validateBoard } from "./board.ts";
 import { countCompletedLinesForPlayer } from "./lines.ts";
 
 export const MIN_PLAYERS = 2;
-export const MAX_PLAYERS = 8;
+export const MAX_PLAYERS = 5;
 export const LINES_TO_WIN = 5;
 
 export type MatchStatus = "in_progress" | "finished";
@@ -124,7 +124,7 @@ export interface CreateMatchOptions {
 }
 
 /**
- * Starts a match once draft phase is done: validates player count (2-8)
+ * Starts a match once draft phase is done: validates player count (2-5)
  * and that every player's board is a valid, fully-drafted 5x5 board.
  * Throws on any violation. `opts.loadouts` seeds each player's skill
  * loadout (see CreateMatchOptions); omitted entirely, every player starts

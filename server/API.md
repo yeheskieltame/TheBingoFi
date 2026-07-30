@@ -69,12 +69,15 @@ socket.emit("room:create", { nickname: "Alice" }, (res) => {
 
 | Event | Payload | Ack sukses | Keterangan |
 |---|---|---|---|
-| `room:create` | `{ nickname: string, mode?: "casual" \| "standard" }` | `{ code, playerId, view: LobbyView }` | Buat room baru, pemanggil jadi host. `mode` default `"casual"`. `"standard"` ditolak kalau chain belum dikonfigurasi di server (lihat §4 "Chain Reader" dan "Mode room & Loadout" di bawah). |
-| `room:join` | `{ code: string, nickname: string }` | `{ code, playerId, view: LobbyView }` | Gagal kalau room tidak ada, sudah `playing`/`finished`, atau penuh (maks 8). |
-| `room:leave` | `{}` | `{}` | Kalau match sedang `playing`, match otomatis di-abort (lihat `match:ended`). |
+| `room:create` | `{ nickname: string, mode?: "casual" \| "standard", maxPlayers?: number, isPublic?: boolean }` | `{ code, playerId, view: LobbyView }` | Buat room baru, pemanggil jadi host. `mode` default `"casual"`. `"standard"` ditolak kalau chain belum dikonfigurasi di server (lihat §4 "Chain Reader" dan "Mode room & Loadout" di bawah). `maxPlayers` (2-5, default 5) dan `isPublic` (default `false` → privat, kode-saja) — lihat "Quick Match & Room Browser" di bawah. |
+| `room:join` | `{ code: string, nickname: string }` | `{ code, playerId, view: LobbyView }` | Gagal kalau room tidak ada, sudah `playing`/`finished`, atau penuh (`maxPlayers` room tsb, default 5). |
+| `room:leave` | `{}` | `{}` | Kalau match sedang `playing`, match otomatis di-abort (lihat `match:ended`). Room VS Bot (lihat `room:createBot`) langsung DIHAPUS begitu pemain keluar, phase apa pun. |
+| `room:list` | `{}` | `{ rooms: RoomSummary[] }` | Daftar room PUBLIK yang masih fase `lobby` dan masih ada slot. Room privat tidak pernah muncul. Lihat "Quick Match & Room Browser" di bawah. |
+| `room:quick` | `{ nickname: string, size: number }` | `{ code, playerId, view: LobbyView }` | Quick Match: join room publik-quickmatch casual yang cocok, atau buat baru. `size` = target pemain (2-5). Lihat "Quick Match & Room Browser" di bawah. |
+| `room:createBot` | `{ nickname: string, level: number }` | `{ code, playerId, view: LobbyView }` | VS Bot: room privat casual 1v1 lawan bot, langsung fase `draft`. `level` 1-10. Lihat "VS Bot" di bawah. |
 | `draft:start` | `{}` | `{ view: LobbyView }` | Hanya host, hanya dari phase `lobby`, minimal 2 pemain. |
-| `draft:submit` | `{ numbers: number[] }` | `{ view: LobbyView }` | `numbers` = board 5x5 (25 angka 1-25, row-major, tanpa duplikat). Room pindah ke `playing` begitu SEMUA pemain submit. |
-| `match:call` | `{ number: number }` | `{ view: MatchView }` | Hanya valid kalau giliran pemanggil (`match.currentTurnPlayerId`), angka 1-25 belum pernah dipanggil. |
+| `draft:submit` | `{ numbers: number[] }` | `{ view: LobbyView }` | `numbers` = board 5x5 (25 angka 1-25, row-major, tanpa duplikat). Room pindah ke `playing` begitu SEMUA pemain submit (termasuk bot, yang sudah submit otomatis di `room:createBot`). |
+| `match:call` | `{ number: number }` | `{ view: MatchView }` | Hanya valid kalau giliran pemanggil (`match.currentTurnPlayerId`), angka 1-25 belum pernah dipanggil. Di room VS Bot, giliran bot dijalankan otomatis oleh server (lihat "VS Bot" di bawah) — client tidak pernah mengirim `match:call` untuk bot. |
 | `wallet:nonce` | `{}` | `{ nonce: string, message: string }` | Minta nonce baru untuk di-sign (lihat "Wallet link" di bawah). Boleh dipanggil sebelum atau sesudah join room. |
 | `wallet:link` | `{ address: string, signature: string }` | `{ address: string }` | Verifikasi signature vs nonce terakhir yang diminta socket ini, lalu tautkan wallet (lihat "Wallet link" di bawah). |
 | `loadout:set` | `{ skillIds: number[] }` | `{ view: LobbyView }` | Set loadout (0-2 skill id unik) — hanya room `mode: "standard"`, fase `lobby`/`draft`, wajib sudah `wallet:link` (lihat "Mode room & Loadout" di bawah). |
@@ -87,10 +90,10 @@ socket.emit("room:create", { nickname: "Alice" }, (res) => {
 
 | Event | Payload | Kapan dikirim |
 |---|---|---|
-| `room:state` | `LobbyView` | Broadcast ke semua socket di room setiap kali state lobby/draft berubah (join, start draft, submit board, wallet:link, loadout:set). |
-| `match:state` | `MatchView` | Broadcast **per-viewer** (lihat di bawah) setiap kali ada `match:call`/`skill:use`/`skill:respond` sukses, dan sekali saat room baru pindah ke `playing`. |
-| `match:ended` | `{ winnerId: string \| null, reason?: string }` | Match selesai — baik karena menang (`winnerId` terisi, termasuk menang lewat efek skill) maupun aborted karena pemain keluar/disconnect (`winnerId: null`, `reason: "player_left" \| "player_disconnected"`). |
-| `quest:completed` | `{ questId: string, title: string }` | Dikirim ke **socket milik pemain itu saja** (bukan broadcast room) setiap kali quest pemain itu baru saja selesai — termasuk quest bertipe `skill_used`. |
+| `room:state` | `LobbyView` | Broadcast ke semua socket di room setiap kali state lobby/draft berubah (join, start draft, submit board, wallet:link, loadout:set). `room:quick`/`room:createBot` yang MEMBUAT room baru sendirian TIDAK memicu broadcast ini (tidak ada orang lain untuk diberi tahu, sama seperti `room:create`) — hanya sisi yang benar-benar JOIN (termasuk `room:quick` yang menemukan room match) yang memicunya, sama seperti `room:join`. |
+| `match:state` | `MatchView` | Broadcast **per-viewer** (lihat di bawah) setiap kali ada `match:call`/`skill:use`/`skill:respond` sukses (termasuk giliran bot yang dijalankan otomatis), dan sekali saat room baru pindah ke `playing`. |
+| `match:ended` | `{ winnerId: string \| null, reason?: string }` | Match selesai — baik karena menang (`winnerId` terisi, termasuk menang lewat efek skill ATAU menang lewat giliran bot) maupun aborted karena pemain keluar/disconnect (`winnerId: null`, `reason: "player_left" \| "player_disconnected"`). |
+| `quest:completed` | `{ questId: string, title: string }` | Dikirim ke **socket milik pemain itu saja** (bukan broadcast room) setiap kali quest pemain itu baru saja selesai — termasuk quest bertipe `skill_used` dan quest bot ladder (`minBotLevel`, lihat "Quest bot ladder" di bawah). |
 | `skill:pending` | `{ playerId: string, effectType: string, awaiting: string[] }` | Broadcast ke room saat sebuah skill use membuka window Nullify (sekali, saat window terbuka — lihat "Skill in-match" di bawah). |
 | `skill:resolved` | `{ playerId: string, effectType: string, nullified: boolean, nullifiedBy?: string }` | Broadcast ke room saat skill yang pending selesai — dibatalkan (`nullified: true`, `nullifiedBy` terisi) atau berhasil (`nullified: false`), termasuk saat window 15 detik habis tanpa jawaban. |
 | `plaza:message` | `PlazaMessage` | Broadcast ke **SEMUA socket yang connect** (`io.emit`, bukan cuma satu room) setiap kali `plaza:send` sukses — termasuk ke pengirim sendiri. Lihat "Plaza chat" di bawah. |
@@ -103,6 +106,8 @@ interface LobbyView {
   phase: "lobby" | "draft" | "playing" | "finished";
   hostId: string;
   mode: "casual" | "standard";
+  maxPlayers: number;        // kapasitas room, 2-5 — pasangkan dengan players.length untuk render "2/4"
+  visibility: "public" | "private";
   players: {
     playerId: string;
     nickname: string;
@@ -110,12 +115,15 @@ interface LobbyView {
     hasSubmittedBoard: boolean;
     wallet?: string;          // address ter-link, lowercase — lihat "Wallet link" di bawah
     loadout?: number[];       // skill id terverifikasi on-chain — PUBLIC, lihat "Mode room & Loadout" di bawah
+    isBot: boolean;           // true untuk slot VS Bot (lihat "VS Bot" di bawah) — levelnya sudah legible dari nickname ("Bot Lv3")
   }[];
 }
 ```
 
 `wallet`/`loadout` sengaja publik (semua pemain di room lihat pick lawan) —
-yang tetap rahasia hanya isi board (`MatchView.board`, lihat di bawah).
+yang tetap rahasia hanya isi board (`MatchView.board`, lihat di bawah). Board
+bot juga TIDAK PERNAH bocor — bot cuma `MatchPlayer` biasa di mata engine,
+jadi kaidah redaksi board yang sama otomatis berlaku untuknya juga.
 
 ### Redaksi board (penting)
 
@@ -189,6 +197,103 @@ socket.emit("room:create", { nickname: "Host" }, (res) => {
 
   // Quest (opsional, per pemain)
   socket.on("quest:completed", ({ questId, title }) => { /* toast, dll */ });
+});
+```
+
+### Quick Match & Room Browser (CONCEPT.md §2b)
+
+Tiga cara masuk match TANPA nunggu lobby sepi, semua di atas `room:create`/
+`room:join` yang sudah ada — tidak ada mekanisme baru di level engine,
+hanya `Room` yang sekarang punya `maxPlayers` (2-5, default 5),
+`visibility` (`"public"`/`"private"`, default `"private"`), dan `autoStart`.
+
+- **Create Room (manual, sudah ada, sekarang lebih fleksibel)** —
+  `room:create({ nickname, mode?, maxPlayers?, isPublic? })`. `maxPlayers`
+  2-5 (default 5), `isPublic` (default `false`) menentukan apakah room ini
+  muncul di `room:list`. Room manual TIDAK `autoStart` — host tetap harus
+  `draft:start` walau sudah penuh.
+- **Room Browser** — `room:list({})` → `{ rooms: RoomSummary[] }`, daftar
+  room PUBLIK yang masih fase `lobby` dan masih ada slot kosong:
+
+  ```ts
+  interface RoomSummary {
+    code: string;
+    hostNickname: string;
+    playerCount: number;
+    maxPlayers: number;
+    mode: "casual" | "standard";
+  }
+  ```
+
+  Room privat TIDAK PERNAH muncul di sini, begitu juga room yang sudah
+  penuh atau sudah lewat fase `lobby` (sudah draft/main). Klik salah satu →
+  `room:join({ code, nickname })` seperti biasa.
+- **Quick Match (VS Player)** — `room:quick({ nickname, size })`, `size`
+  2-5, CASUAL ONLY (tidak ada loadout). Server mencari room publik
+  quick-match casual dengan `maxPlayers === size` yang masih ada slot →
+  join; kalau tidak ada → buat room publik baru dengan `autoStart: true`.
+  Begitu room `autoStart` itu penuh (`players.length === maxPlayers`), fase
+  otomatis pindah ke `draft` — TANPA `draft:start`, tanpa host action sama
+  sekali. Ack sama persis seperti `room:create`/`room:join`
+  (`{ code, playerId, view: LobbyView }`), jadi client tidak perlu tahu
+  apakah dia baru join atau baru bikin room.
+
+```ts
+// Dua pemain berbeda, dua panggilan room:quick independen dengan size sama
+// → keduanya berakhir di room YANG SAMA begitu yang kedua masuk, dan
+// draft langsung mulai tanpa siapa pun memanggil draft:start.
+socket.emit("room:quick", { nickname: "Alice", size: 2 }, (res) => {
+  if (!res.ok) return;
+  // res.view.phase === "lobby" kalau belum penuh, "draft" kalau langsung penuh
+});
+```
+
+### VS Bot (CONCEPT.md §2b)
+
+Main solo lawan bot, 10 level kesulitan, match mulai INSTAN (tanpa lobby
+sama sekali) — cocok untuk onboarding pemain baru sebelum masuk ranked.
+
+- **`room:createBot({ nickname, level })`** — `level` integer 1-10 (Lv1
+  hampir acak, Lv10 selalu pilih panggilan optimal — lihat
+  `server/src/bot/bot.ts`). Membuat room PRIVAT, casual (tanpa skill), 2
+  slot: pemanggil (host) + 1 bot (`playerId` berformat `bot:<uuid>`,
+  `nickname: "Bot Lv<level>"`, `players[].isBot: true` di `LobbyView`).
+  Room LANGSUNG di fase `draft` — bot sudah "submit" board acaknya sendiri
+  saat itu juga, jadi begitu pemanggil `draft:submit`, match langsung mulai
+  seperti biasa (giliran pertama selalu manusia).
+- **Giliran bot** — server yang menjalankan `match:call` untuk bot secara
+  otomatis begitu giliran tiba, setelah delay singkat (±700ms, biar terasa
+  seperti lawan "berpikir", bukan instan) — client TIDAK PERNAH mengirim
+  `match:call` atas nama bot. Setelah bot memanggil, `match:state`
+  di-broadcast persis seperti panggilan manusia (termasuk event quest), dan
+  kalau bot menang, `match:ended` terbit dengan `winnerId` bot seperti
+  biasa. Bot HANYA pernah melihat info publik (board sendiri +
+  `calledNumbers`) — board manusia tidak pernah diteruskan ke logic bot
+  (fair by construction), dan sesuai kaidah redaksi board, board bot
+  sendiri juga tidak pernah bocor ke `MatchView` manusia.
+- **Bot ladder = quest** — menang lawan bot Lv1/3/5/7/10 masing-masing
+  menyelesaikan satu quest musiman (lihat "Quest bot ladder" di bawah);
+  menang lawan bot Lv5 misalnya otomatis menyelesaikan quest Lv1+Lv3+Lv5
+  sekaligus.
+- **Kalau pemanggil (manusia) keluar/disconnect** — room VS Bot langsung
+  DIHAPUS TOTAL, fase apa pun (bot tidak pernah dibiarkan main sendirian /
+  jadi room zombie); giliran bot yang mungkin sedang terjadwal juga
+  dibatalkan.
+
+```ts
+socket.emit("room:createBot", { nickname: "Solo", level: 5 }, (res) => {
+  if (!res.ok) return;
+  const { code, playerId, view } = res;
+  // view.phase === "draft" sudah, view.players punya 2 entri (kamu + bot)
+
+  socket.emit("draft:submit", { numbers: myBoard }, () => {
+    // match mulai, giliranmu duluan (index 0)
+  });
+
+  socket.on("match:state", (v) => {
+    // saat currentTurnPlayerId !== playerId, itu giliran bot - server yang jalanin otomatis
+  });
+  socket.on("match:ended", ({ winnerId }) => { /* winnerId bisa kamu atau bot */ });
 });
 ```
 
@@ -525,6 +630,19 @@ curl http://localhost:3001/quests
 ```json
 { "ok": true, "data": [ { "id": "daily_win_1_match", "title": "Menang 1x", "eventType": "match_won", "target": 1, "window": "daily", "reward": { "xp": 100, "seasonPoints": 20 } }, ... ] }
 ```
+
+**Quest bot ladder** (CONCEPT.md §2b) — 5 quest musiman (`window: "season"`)
+tambahan di katalog di atas: `season_beat_bot_lv1`/`lv3`/`lv5`/`lv7`/`lv10`
+("Kalahkan Bot Lv1/3/5/7/10"), masing-masing `eventType: "match_won"` +
+`filter: { minBotLevel: N }`. Event `match_won` dari kemenangan lawan VS Bot
+(lihat "VS Bot" di atas) diisi server dengan `botLevel` = level bot itu
+SEBELUM dicatat sebagai quest event — `minBotLevel` cocok kalau
+`botLevel >= minBotLevel`, jadi menang lawan bot level tinggi otomatis ikut
+menyelesaikan semua milestone di bawahnya sekaligus (menang lawan Lv5 →
+Lv1 + Lv3 + Lv5 selesai bersamaan). Menang lawan sesama manusia tidak
+pernah membawa `botLevel`, jadi tidak pernah menyentuh quest ini. Reward XP
+naik bertingkat per level; Lv10 juga memberi `cosmeticId` (badge profil,
+CONCEPT.md: "level tertinggi yang terkalahkan jadi badge profil").
 
 ### `GET /quests/progress/:playerId`
 

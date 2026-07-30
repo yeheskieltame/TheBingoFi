@@ -58,6 +58,11 @@ export default function PlayerList({ players, hostId, mode }: PlayerListProps) {
               ) : (
                 player.nickname
               )}
+              {player.isBot && (
+                <span className="ml-1.5 rounded-full border border-rose-600 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase text-rose-300">
+                  {t.botBadge}
+                </span>
+              )}
             </td>
             <td className="py-1 pr-2 text-slate-400">{player.playerId === hostId ? t.host : ""}</td>
             <td className="py-1 pr-2">

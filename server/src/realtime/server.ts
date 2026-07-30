@@ -30,9 +30,12 @@ import type {
   PlazaHistoryAckData,
   PlazaSendAckData,
   PlazaSendPayload,
+  RoomCreateBotPayload,
   RoomCreatePayload,
   RoomJoinPayload,
   RoomJoinedAckData,
+  RoomListAckData,
+  RoomQuickPayload,
   ServerToClientEvents,
   SkillRespondPayload,
   SkillUsePayload,
@@ -41,17 +44,22 @@ import type {
   WalletNonceAckData,
 } from "../api/protocol.ts";
 import { recordEvent } from "../api/questStore.ts";
-import type { MatchState, PendingSkill, SkillArgs, SkillInstance } from "../engine/index.ts";
+import { MAX_BOT_LEVEL, MIN_BOT_LEVEL, pickCall } from "../bot/bot.ts";
+import { MIN_PLAYERS, type MatchState, type PendingSkill, type SkillArgs, type SkillInstance } from "../engine/index.ts";
 import { createPlazaStore } from "../plaza/plaza.ts";
 import { eventsFromCall, type GameEvent } from "../quest/events.ts";
 import {
   assertCanSetLoadout,
   callNumberInRoom,
+  createBotRoom,
   createRoom,
   exitRoom,
   getRoom,
   joinRoom,
+  listJoinableRooms,
   MAX_LOADOUT_SIZE,
+  MAX_PLAYERS,
+  quickMatch,
   respondToSkillInRoom,
   type Room,
   type RoomMode,
@@ -61,7 +69,7 @@ import {
   submitBoard,
   useSkillInRoom,
 } from "./rooms.ts";
-import { lobbyView, matchViewFor } from "./views.ts";
+import { lobbyView, matchViewFor, roomSummaryView } from "./views.ts";
 
 const MAX_NICKNAME_LENGTH = 24;
 const MAX_ROOM_CODE_LENGTH = 12;
@@ -69,6 +77,8 @@ const MAX_ROOM_CODE_LENGTH = 12;
 const WALLET_NONCE_TTL_MS = 5 * 60 * 1000;
 /** How long a Nullify window stays open before every still-`awaiting` opponent auto-passes - see armNullifyTimer. Override via opts.nullifyTimeoutMs (tests use a much smaller value). */
 const DEFAULT_NULLIFY_TIMEOUT_MS = 15_000;
+/** How long the server waits before playing a VS Bot's turn (CONCEPT.md §2b) - just enough to feel like a "thinking" opponent rather than instant. Override via opts.botDelayMs (tests use 0). */
+const DEFAULT_BOT_DELAY_MS = 700;
 
 /**
  * A thin, injectable stand-in for chain/reader.ts's `verifyLoadout` -
@@ -107,6 +117,13 @@ export interface RealtimeServerOptions {
    * actually waiting 15 real seconds.
    */
   readonly nullifyTimeoutMs?: number;
+  /**
+   * How long the server waits after it becomes a VS Bot's turn before it
+   * actually plays (CONCEPT.md §2b) - default DEFAULT_BOT_DELAY_MS (700ms).
+   * Override to 0 for tests that need a bot match to run to completion
+   * without waiting in real time.
+   */
+  readonly botDelayMs?: number;
 }
 
 // -- wire types ---------------------------------------------------------
@@ -182,6 +199,36 @@ function validateRoomMode(value: unknown): RoomMode {
   if (value === undefined) return "casual";
   if (value === "casual" || value === "standard") return value;
   throw new Error('mode must be "casual" or "standard"');
+}
+
+/** room:create's optional maxPlayers - undefined means "use rooms.ts's default (5)", anything else must be 2-5 (rooms.ts re-validates too, but a boundary check here gives a clearer error message than letting the shape through). */
+function validateOptionalMaxPlayers(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "number" || !Number.isInteger(value) || value < MIN_PLAYERS || value > MAX_PLAYERS) {
+    throw new Error(`maxPlayers must be an integer between ${MIN_PLAYERS} and ${MAX_PLAYERS}`);
+  }
+  return value;
+}
+
+function validateIsPublicFlag(value: unknown): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") throw new Error("isPublic must be a boolean");
+  return value;
+}
+
+/** room:quick's target size - required (unlike room:create's optional maxPlayers), 2-5. */
+function validateRoomSize(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < MIN_PLAYERS || value > MAX_PLAYERS) {
+    throw new Error(`size must be an integer between ${MIN_PLAYERS} and ${MAX_PLAYERS}`);
+  }
+  return value;
+}
+
+function validateBotLevel(value: unknown): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < MIN_BOT_LEVEL || value > MAX_BOT_LEVEL) {
+    throw new Error(`level must be an integer between ${MIN_BOT_LEVEL} and ${MAX_BOT_LEVEL}`);
+  }
+  return value;
 }
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -360,8 +407,28 @@ function emitQuestEvent(io: RealtimeServer, event: GameEvent, dateISO: string): 
   }
 }
 
-function processQuestEvents(io: RealtimeServer, prevMatch: MatchState, nextMatch: MatchState): void {
-  const events = eventsFromCall(prevMatch, nextMatch);
+/**
+ * eventsFromCall (../quest/events.ts) derives events from raw MatchState -
+ * it has no idea a bot was even involved. `match_won` events therefore get
+ * augmented HERE, once, with the room's bot difficulty (CONCEPT.md §2b's
+ * bot ladder quests, QuestFilter.minBotLevel) whenever `room.bot` is set
+ * AND the winner is the human (a bot "winning" against itself is
+ * meaningless - there's exactly one human per bot room, so this is really
+ * just "don't tag the bot's own win, which never happens to be recorded as
+ * a quest anyway since quest progress is per human playerId").
+ */
+function augmentEventsForBot(room: Room, events: readonly GameEvent[]): readonly GameEvent[] {
+  if (!room.bot) return events;
+  const bot = room.bot;
+  return events.map((event) =>
+    event.type === "match_won" && event.playerId !== bot.playerId
+      ? { ...event, botLevel: bot.level }
+      : event,
+  );
+}
+
+function processQuestEvents(io: RealtimeServer, room: Room, prevMatch: MatchState, nextMatch: MatchState): void {
+  const events = augmentEventsForBot(room, eventsFromCall(prevMatch, nextMatch));
   if (events.length === 0) return;
 
   const dateISO = today();
@@ -415,7 +482,7 @@ function announceSkillResolved(
   });
   const dateISO = today();
   emitQuestEvent(io, { type: "skill_used", playerId: pending.playerId, effectType: pending.effectType }, dateISO);
-  processQuestEvents(io, prevMatch, nextMatch);
+  processQuestEvents(io, room, prevMatch, nextMatch);
   if (nextMatch.status === "finished") {
     io.to(roomChannel(room.code)).emit("match:ended", { winnerId: nextMatch.winnerId ?? null });
   }
@@ -441,6 +508,80 @@ function autoPassNullify(io: RealtimeServer, code: string): void {
   announceSkillResolved(io, updatedRoom, prevMatch, updatedRoom.match!, pending);
 }
 
+// -- bot (VS Bot turns, CONCEPT.md §2b) ----------------------------------
+//
+// A VS Bot room (room.bot set, see rooms.ts's createBotRoom) is casual-only
+// (no skills), so the bot only ever needs to play match:call - never
+// skill:use/skill:respond. Every place a human's call could hand the turn
+// to the bot (draft:submit completing the match, match:call itself) calls
+// maybeScheduleBotTurn, which is a no-op unless it's actually the bot's
+// turn right now. One timer per room code is enough for the same reason
+// nullifyTimers is: a room only ever has one bot, and scheduling always
+// clears whatever timer was there before.
+
+const botTimers = new Map<string, NodeJS.Timeout>();
+
+/** Clears a room's scheduled bot turn, if any - called both when a fresh turn is (re-)scheduled and when a bot room goes away (see exitRoom's docs on why a bot room is deleted outright rather than lingering). */
+function clearBotTimer(code: string): void {
+  const timer = botTimers.get(code);
+  if (timer) {
+    clearTimeout(timer);
+    botTimers.delete(code);
+  }
+}
+
+/** True iff `room` currently needs a bot turn scheduled: it has a bot, a match in progress, and it's that bot's turn right now. */
+function isBotsTurn(room: Room): boolean {
+  if (!room.bot || room.phase !== "playing" || !room.match || room.match.status !== "in_progress") {
+    return false;
+  }
+  return room.match.players[room.match.currentTurnIndex]?.id === room.bot.playerId;
+}
+
+function maybeScheduleBotTurn(io: RealtimeServer, room: Room, delayMs: number): void {
+  if (!isBotsTurn(room)) return;
+  clearBotTimer(room.code);
+  const timer = setTimeout(() => playBotTurn(io, room.code, delayMs), delayMs);
+  timer.unref?.(); // never keep the process alive just for a scheduled bot turn
+  botTimers.set(room.code, timer);
+}
+
+/**
+ * Plays the bot's turn: picks a call via bot/bot.ts's pickCall (level +
+ * public state only - the bot's own board plus calledNumbers, never an
+ * opponent's board, see bot/bot.ts's fairness doc) and runs it through
+ * EXACTLY the same path a human's match:call takes (callNumberInRoom,
+ * broadcastMatchState, quest events, match:ended) - the bot is just
+ * another player from the engine's point of view. Re-checks isBotsTurn
+ * after the lookup in case the room vanished or the turn moved on for some
+ * other reason between scheduling and firing (e.g. the human left, which
+ * deletes a bot room outright - see rooms.ts's exitRoom).
+ */
+function playBotTurn(io: RealtimeServer, code: string, delayMs: number): void {
+  botTimers.delete(code);
+  const room = getRoom(code);
+  if (!room || !isBotsTurn(room)) return;
+
+  const bot = room.bot!;
+  const prevMatch = room.match!;
+  const botPlayer = prevMatch.players[prevMatch.currentTurnIndex]!;
+  const number = pickCall(botPlayer.board, prevMatch.calledNumbers, bot.level, Math.random);
+
+  const result = callNumberInRoom(code, bot.playerId, number);
+  if (!result.ok || !result.room) return; // unreachable in practice: pickCall only ever returns a legal, uncalled number
+
+  const updatedRoom = result.room;
+  broadcastMatchState(io, updatedRoom);
+  processQuestEvents(io, updatedRoom, prevMatch, updatedRoom.match!);
+
+  if (updatedRoom.match?.status === "finished") {
+    io.to(roomChannel(code)).emit("match:ended", { winnerId: updatedRoom.match.winnerId ?? null });
+    return;
+  }
+
+  maybeScheduleBotTurn(io, updatedRoom, delayMs); // defensive - never actually the bot's turn again immediately in a 2-player match, but harmless if it ever were
+}
+
 // -- server ---------------------------------------------------------
 
 export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeServerOptions = {}): RealtimeServer {
@@ -450,6 +591,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
   const verifyLoadout = opts.verifyLoadout;
   const resolveLoadout = opts.resolveLoadout;
   const nullifyTimeoutMs = opts.nullifyTimeoutMs ?? DEFAULT_NULLIFY_TIMEOUT_MS;
+  const botDelayMs = opts.botDelayMs ?? DEFAULT_BOT_DELAY_MS;
   // One Plaza per server instance (not a module-level singleton) - see
   // plaza/plaza.ts's createPlazaStore doc for why: it keeps this server's
   // chat history/rate-limit state from bleeding into any other instance
@@ -465,7 +607,14 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
         if (mode === "standard" && !verifyLoadout) {
           throw new Error('Chain belum dikonfigurasi - mode "standard" tidak tersedia');
         }
-        const { room, playerId } = createRoom(nickname, { mode, wallet: socket.data.walletAddress });
+        const maxPlayers = validateOptionalMaxPlayers(payload?.maxPlayers);
+        const visibility = validateIsPublicFlag(payload?.isPublic) ? "public" : "private";
+        const { room, playerId } = createRoom(nickname, {
+          mode,
+          maxPlayers,
+          visibility,
+          wallet: socket.data.walletAddress,
+        });
         joinSocketToRoom(socket, room.code, playerId);
         ack({ ok: true, code: room.code, playerId, view: lobbyView(room) });
       }),
@@ -477,6 +626,41 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
         const code = validateRoomCode(payload?.code);
         const nickname = validateNickname(payload?.nickname);
         const { room, playerId } = joinRoom(code, nickname, { wallet: socket.data.walletAddress });
+        joinSocketToRoom(socket, room.code, playerId);
+        ack({ ok: true, code: room.code, playerId, view: lobbyView(room) });
+        broadcastLobby(io, room);
+      }),
+    );
+
+    socket.on(
+      "room:list",
+      safeHandler<EmptyAckData, RoomListAckData>((_payload, ack) => {
+        ack({ ok: true, rooms: listJoinableRooms().map(roomSummaryView) });
+      }),
+    );
+
+    socket.on(
+      "room:quick",
+      safeHandler<RoomQuickPayload, RoomJoinedAckData>((payload, ack) => {
+        const nickname = validateNickname(payload?.nickname);
+        const size = validateRoomSize(payload?.size);
+        const { room, playerId } = quickMatch(nickname, size, { wallet: socket.data.walletAddress });
+        joinSocketToRoom(socket, room.code, playerId);
+        ack({ ok: true, code: room.code, playerId, view: lobbyView(room) });
+        // Only broadcast when this call actually JOINED an existing room
+        // (mirrors room:join) - quickMatch's other branch just created a
+        // brand new room with this caller as its only player, same as
+        // room:create, which also doesn't broadcast (nobody else to tell).
+        if (room.players.length > 1) broadcastLobby(io, room);
+      }),
+    );
+
+    socket.on(
+      "room:createBot",
+      safeHandler<RoomCreateBotPayload, RoomJoinedAckData>(async (payload, ack) => {
+        const nickname = validateNickname(payload?.nickname);
+        const level = validateBotLevel(payload?.level);
+        const { room, playerId } = await createBotRoom(nickname, level);
         joinSocketToRoom(socket, room.code, playerId);
         ack({ ok: true, code: room.code, playerId, view: lobbyView(room) });
         broadcastLobby(io, room);
@@ -559,6 +743,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
       safeHandler<EmptyAckData, EmptyAckData>((_payload, ack) => {
         const ctx = requireSocketRoom(socket);
         clearNullifyTimer(ctx.roomCode);
+        if (getRoom(ctx.roomCode)?.bot) clearBotTimer(ctx.roomCode);
         const result = exitRoom(ctx.roomCode, ctx.playerId);
         clearSocketRoom(socket);
         ack({ ok: true });
@@ -584,7 +769,10 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
         const room = await submitBoard(ctx.roomCode, ctx.playerId, numbers, { resolveLoadout });
         ack({ ok: true, view: lobbyView(room) });
         broadcastLobby(io, room);
-        if (room.phase === "playing") broadcastMatchState(io, room);
+        if (room.phase === "playing") {
+          broadcastMatchState(io, room);
+          maybeScheduleBotTurn(io, room, botDelayMs);
+        }
       }),
     );
 
@@ -617,11 +805,13 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
         broadcastMatchState(io, updatedRoom);
 
         if (prevMatch && updatedRoom.match) {
-          processQuestEvents(io, prevMatch, updatedRoom.match);
+          processQuestEvents(io, updatedRoom, prevMatch, updatedRoom.match);
         }
 
         if (updatedRoom.match?.status === "finished") {
           io.to(roomChannel(ctx.roomCode)).emit("match:ended", { winnerId: updatedRoom.match.winnerId ?? null });
+        } else {
+          maybeScheduleBotTurn(io, updatedRoom, botDelayMs);
         }
       }),
     );
@@ -753,6 +943,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
       const { roomCode, playerId } = socket.data;
       if (!roomCode || !playerId) return;
       clearNullifyTimer(roomCode);
+      if (getRoom(roomCode)?.bot) clearBotTimer(roomCode);
 
       const result = exitRoom(roomCode, playerId);
       applyExitResult(io, roomCode, result, "player_disconnected");

@@ -148,11 +148,11 @@ test("applyEvent ignores events whose eventType does not match any quest def", (
   assert.deepEqual(result.completed, []);
 });
 
-test("exampleQuests contains the 5 quests described in CONCEPT.md §7.2", () => {
-  assert.equal(exampleQuests.length, 5);
+test("exampleQuests contains the 5 quests described in CONCEPT.md §7.2 plus the 5 bot-ladder quests from §2b", () => {
+  assert.equal(exampleQuests.length, 10);
 
   const byId = new Map(exampleQuests.map((q) => [q.id, q]));
-  assert.equal(byId.size, 5, "every quest id is unique");
+  assert.equal(byId.size, 10, "every quest id is unique");
 
   const dailyPlay = [...exampleQuests].find((q) => q.eventType === "match_played" && q.window === "daily");
   assert.ok(dailyPlay);
@@ -182,9 +182,76 @@ test("exampleQuests contains the 5 quests described in CONCEPT.md §7.2", () => 
   assert.ok(weeklyInvite);
   assert.equal(weeklyInvite!.target, 1);
 
+  const botLadderIds = ["season_beat_bot_lv1", "season_beat_bot_lv3", "season_beat_bot_lv5", "season_beat_bot_lv7", "season_beat_bot_lv10"];
+  const botLadderLevels = [1, 3, 5, 7, 10];
+  for (let i = 0; i < botLadderIds.length; i++) {
+    const quest = byId.get(botLadderIds[i]!);
+    assert.ok(quest, `expected quest ${botLadderIds[i]}`);
+    assert.equal(quest!.eventType, "match_won");
+    assert.equal(quest!.window, "season");
+    assert.equal(quest!.target, 1);
+    assert.equal(quest!.filter?.minBotLevel, botLadderLevels[i]);
+  }
+  assert.equal(byId.get("season_beat_bot_lv10")!.reward.cosmeticId, "badge_bot_lv10_slayer", "the Lv10 milestone grants a profile badge");
+
   // Reward is never money/tokens (CLAUDE.md core rule) - just structural sanity.
   for (const quest of exampleQuests) {
     assert.equal(typeof quest.reward.xp, "number");
     assert.equal(typeof quest.reward.seasonPoints, "number");
   }
+});
+
+// -- bot ladder quests (CONCEPT.md §2b) --------------------------------
+
+function matchWonVsBot(playerId: string, botLevel?: number): GameEvent {
+  return { type: "match_won", playerId, botLevel };
+}
+
+test("QuestFilter.minBotLevel: a match_won without botLevel (human opponent) never matches a bot-ladder quest", () => {
+  const ctx = { dateISO: "2026-07-29" };
+  const lv3Quest = exampleQuests.find((q) => q.id === "season_beat_bot_lv3")!;
+
+  const result = applyEvent([lv3Quest], [], matchWonVsBot("p1", undefined), ctx);
+  assert.deepEqual(result.progress, []);
+  assert.deepEqual(result.completed, []);
+});
+
+test("QuestFilter.minBotLevel: botLevel below the threshold does not match, botLevel at/above it does", () => {
+  const ctx = { dateISO: "2026-07-29" };
+  const lv5Quest = exampleQuests.find((q) => q.id === "season_beat_bot_lv5")!;
+
+  const tooLow = applyEvent([lv5Quest], [], matchWonVsBot("p1", 4), ctx);
+  assert.deepEqual(tooLow.progress, [], "Lv4 win does not satisfy minBotLevel:5");
+
+  const exact = applyEvent([lv5Quest], [], matchWonVsBot("p1", 5), ctx);
+  assert.equal(exact.progress.length, 1);
+  assert.equal(exact.completed.length, 1);
+
+  const harder = applyEvent([lv5Quest], [], matchWonVsBot("p1", 10), ctx);
+  assert.equal(harder.progress.length, 1, "beating a HARDER bot also satisfies a lower milestone");
+  assert.equal(harder.completed.length, 1);
+});
+
+test("beating Bot Lv5 completes the Lv1 + Lv3 + Lv5 milestones simultaneously (3 separate progress entries), leaving Lv7/Lv10 untouched", () => {
+  const ctx = { dateISO: "2026-07-29" };
+  const botQuests = exampleQuests.filter((q) => q.id.startsWith("season_beat_bot_lv"));
+
+  const result = applyEvent(botQuests, [], matchWonVsBot("p1", 5), ctx);
+
+  const completedIds = result.completed.map((q) => q.id).sort();
+  assert.deepEqual(completedIds, ["season_beat_bot_lv1", "season_beat_bot_lv3", "season_beat_bot_lv5"]);
+  assert.equal(result.progress.length, 3, "exactly 3 separate progress entries, one per satisfied quest");
+  assert.ok(
+    !result.progress.some((p) => p.questId === "season_beat_bot_lv7" || p.questId === "season_beat_bot_lv10"),
+    "Lv7/Lv10 milestones must not be touched by a Lv5 win",
+  );
+});
+
+test("winning against a human (no botLevel) does not touch any bot-ladder quest progress", () => {
+  const ctx = { dateISO: "2026-07-29" };
+  const botQuests = exampleQuests.filter((q) => q.id.startsWith("season_beat_bot_lv"));
+
+  const result = applyEvent(botQuests, [], matchWonVsBot("p1", undefined), ctx);
+  assert.deepEqual(result.progress, []);
+  assert.deepEqual(result.completed, []);
 });

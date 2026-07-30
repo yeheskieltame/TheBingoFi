@@ -15,12 +15,22 @@ Target chain: GIWA (OP Stack L2). Target program: GASOK — track Consumer/Socia
 
 ## 2. Core Gameplay (baseline, tanpa skill)
 
-- Board 5×5, multiplayer 2–8 pemain per room.
+- Board 5×5, multiplayer 2–5 pemain per room (pembuat room menentukan target 2–5).
 - Sebelum match, pemain **menyusun sendiri** penempatan angka (1–25) di board-nya (draft phase). Board lawan tersembunyi.
 - **Pemain memanggil angka secara bergantian** (turn-based) — bukan server random. Angka yang dipanggil ter-mark di SEMUA board.
 - Strategi inti: susunan board + memilih angka yang paling menguntungkan board sendiri sambil menebak/menghindari kebutuhan lawan.
 - **Menang: pemain pertama yang menyelesaikan 5 garis** (horizontal/vertikal/diagonal), tiap garis = 5 angka ter-mark → B-I-N-G-O.
 - Reward menang: XP, season points, leaderboard, item kosmetik non-tradeable. **Bukan uang.**
+
+### 2b. Masuk Match Tanpa Nunggu (matchmaking)
+
+Prinsip: user harus bisa MAIN dalam hitungan detik, bukan nunggu lobby sepi.
+
+1. **Quick Match (VS Player):** pilih jumlah pemain (2–5) → auto-join room publik yang cocok, atau room publik baru dibuat. Room quick match auto-mulai draft begitu penuh — tanpa host.
+2. **Room Browser:** daftar room publik yang masih terbuka (host, slot terisi/target, mode) → join 1 klik. Room buatan manual bisa dibuat publik (muncul di browser) atau privat (kode saja).
+3. **Create Room:** set target pemain 2–5 + mode + publik/privat.
+4. **VS Bot:** main solo lawan bot, **10 level kesulitan** (Lv1 hampir acak → Lv10 selalu pilih panggilan optimal; bot hanya tahu info publik — tidak pernah lihat board pemain, fair). Bot main casual (tanpa skill). Match mulai instan.
+   - **Bot ladder = mesin quest/progression:** quest milestone "Kalahkan Bot Lv1/3/5/7/10" (reward XP + kosmetik) — level tertinggi yang terkalahkan jadi badge profil. Onboarding: pemain baru diarahkan ke bot dulu sebelum ranked.
 
 ## 3. Skill System
 

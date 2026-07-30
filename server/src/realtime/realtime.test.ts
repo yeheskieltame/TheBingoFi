@@ -41,6 +41,30 @@ function waitForEvent<T>(socket: ClientSocket, event: string): Promise<T> {
   return new Promise((resolve) => socket.once(event, (payload: T) => resolve(payload)));
 }
 
+/**
+ * A pull-based queue over every `event` a socket receives, in order -
+ * needed for the VS Bot test below, where a single socket receives a whole
+ * SEQUENCE of match:state broadcasts (its own calls AND the bot's, all on
+ * the same connection) and the test needs to consume them one at a time in
+ * delivery order rather than racing multiple `.once` listeners against
+ * each other.
+ */
+function eventQueue<T>(socket: ClientSocket, event: string): () => Promise<T> {
+  const buffered: T[] = [];
+  const waiters: ((value: T) => void)[] = [];
+  socket.on(event, (payload: T) => {
+    const waiter = waiters.shift();
+    if (waiter) waiter(payload);
+    else buffered.push(payload);
+  });
+  return () =>
+    new Promise<T>((resolve) => {
+      const next = buffered.shift();
+      if (next !== undefined) resolve(next);
+      else waiters.push(resolve);
+    });
+}
+
 /** Recursively collects every array of exactly length 25 anywhere inside `value`. */
 function collectBoardSizedArrays(value: unknown, out: unknown[][] = []): unknown[][] {
   if (Array.isArray(value)) {
@@ -259,15 +283,15 @@ test("joining a room with a nonexistent code returns an ack error", async () => 
   assert.match(result.error, /not found/i);
 });
 
-test("a 9th join to an already-full (8-player) room returns an ack error", async () => {
+test("a 6th join to an already-full (default 5-player) room returns an ack error", async () => {
   const host = await connectClient();
   const created = await emit(host, "room:create", { nickname: "Host" });
   assert.equal(created.ok, true);
   if (!created.ok) throw new Error("unreachable");
   const code = created.code as string;
 
-  // 7 more joins fill the room to MAX_PLAYERS (8).
-  for (let i = 0; i < 7; i++) {
+  // 4 more joins fill the room to the default MAX_PLAYERS (5).
+  for (let i = 0; i < 4; i++) {
     const guest = await connectClient();
     const joined = await emit(guest, "room:join", { code, nickname: `Guest${i}` });
     assert.equal(joined.ok, true, `join #${i + 2} should succeed`);
@@ -278,6 +302,234 @@ test("a 9th join to an already-full (8-player) room returns an ack error", async
   assert.equal(result.ok, false);
   if (result.ok) throw new Error("unreachable");
   assert.match(result.error, /full/i);
+});
+
+test("room:create maxPlayers is honored: a 3rd join to a 2-player room is rejected", async () => {
+  const host = await connectClient();
+  const created = await emit(host, "room:create", { nickname: "Host", maxPlayers: 2 });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error("unreachable");
+  const code = created.code as string;
+  assert.equal((created.view as { maxPlayers: number }).maxPlayers, 2);
+
+  const guest = await connectClient();
+  const joined = await emit(guest, "room:join", { code, nickname: "Guest" });
+  assert.equal(joined.ok, true);
+
+  const overflow = await connectClient();
+  const result = await emit(overflow, "room:join", { code, nickname: "OneTooMany" });
+  assert.equal(result.ok, false);
+  if (result.ok) throw new Error("unreachable");
+  assert.match(result.error, /full/i);
+});
+
+// -- matchmaking: room:list, room:quick, room:createBot (CONCEPT.md §2b) --
+
+test("room:list lists public rooms with an open slot, hides private rooms, and drops full rooms", async () => {
+  const publicHost = await connectClient();
+  const publicCreated = await emit(publicHost, "room:create", {
+    nickname: "PublicHost",
+    isPublic: true,
+    maxPlayers: 3,
+  });
+  assert.equal(publicCreated.ok, true);
+  if (!publicCreated.ok) throw new Error("unreachable");
+  const publicCode = publicCreated.code as string;
+
+  const privateHost = await connectClient();
+  const privateCreated = await emit(privateHost, "room:create", { nickname: "PrivateHost" });
+  assert.equal(privateCreated.ok, true);
+  if (!privateCreated.ok) throw new Error("unreachable");
+  const privateCode = privateCreated.code as string;
+
+  const fullHost = await connectClient();
+  const fullCreated = await emit(fullHost, "room:create", { nickname: "FullHost", isPublic: true, maxPlayers: 2 });
+  assert.equal(fullCreated.ok, true);
+  if (!fullCreated.ok) throw new Error("unreachable");
+  const fullCode = fullCreated.code as string;
+  const fullGuest = await connectClient();
+  const fullJoin = await emit(fullGuest, "room:join", { code: fullCode, nickname: "FullGuest" });
+  assert.equal(fullJoin.ok, true);
+
+  const lister = await connectClient();
+  const listRes = await emit(lister, "room:list", {});
+  assert.equal(listRes.ok, true);
+  if (!listRes.ok) throw new Error("unreachable");
+  const rooms = listRes.rooms as { code: string; hostNickname: string; playerCount: number; maxPlayers: number; mode: string }[];
+
+  const publicEntry = rooms.find((r) => r.code === publicCode);
+  assert.deepEqual(
+    publicEntry,
+    { code: publicCode, hostNickname: "PublicHost", playerCount: 1, maxPlayers: 3, mode: "casual" },
+    "public room with an open slot should be listed, with only the summary fields",
+  );
+
+  assert.ok(!rooms.some((r) => r.code === privateCode), "a private room must never be listed");
+  assert.ok(!rooms.some((r) => r.code === fullCode), "a full room must not be listed even though it's public");
+});
+
+test("room:quick matches two players into the same auto-start room, which auto-starts the draft, and the match plays to completion", async () => {
+  const a = await connectClient();
+  const b = await connectClient();
+
+  const first = await emit(a, "room:quick", { nickname: "Alice", size: 2 });
+  assert.equal(first.ok, true);
+  if (!first.ok) throw new Error("unreachable");
+  assert.equal((first.view as { phase: string }).phase, "lobby", "not full yet - room:quick alone doesn't force draft");
+
+  const draftBroadcastPromise = waitForEvent<{ phase: string }>(a, "room:state");
+  const second = await emit(b, "room:quick", { nickname: "Bob", size: 2 });
+  assert.equal(second.ok, true);
+  if (!second.ok) throw new Error("unreachable");
+  assert.equal(second.code, first.code, "the second room:quick call should join the same room, not create a new one");
+  assert.equal(
+    (second.view as { phase: string }).phase,
+    "draft",
+    "the room fills and auto-starts the draft with no host action",
+  );
+
+  const draftBroadcast = await draftBroadcastPromise;
+  assert.equal(draftBroadcast.phase, "draft", "the other player sees the same auto-start via room:state");
+
+  // From here on this is exactly setupTwoPlayerMatch's flow/board pair - a
+  // (the room's creator, turn index 0) vs b, alternating 1..21 with a
+  // winning the tie on 21 (see engine/match.test.ts for the underlying math).
+  const aFirstMatchState = waitForEvent<Record<string, unknown>>(a, "match:state");
+  const bFirstMatchState = waitForEvent<Record<string, unknown>>(b, "match:state");
+  const aSubmit = await emit(a, "draft:submit", { numbers: identityBoard() });
+  assert.equal(aSubmit.ok, true);
+  const bSubmit = await emit(b, "draft:submit", { numbers: shiftedBoard() });
+  assert.equal(bSubmit.ok, true);
+  await Promise.all([aFirstMatchState, bFirstMatchState]);
+
+  for (let n = 1; n <= 20; n++) {
+    const caller = n % 2 === 1 ? a : b;
+    const result = await emit(caller, "match:call", { number: n });
+    assert.equal(result.ok, true, `call ${n} should succeed`);
+  }
+
+  const matchEnded = waitForEvent<{ winnerId: string | null }>(a, "match:ended");
+  const finalCall = await emit(a, "match:call", { number: 21 });
+  assert.equal(finalCall.ok, true);
+  if (!finalCall.ok) throw new Error("unreachable");
+  const finalView = finalCall.view as { status: string; winnerId?: string };
+  assert.equal(finalView.status, "finished");
+  assert.equal(finalView.winnerId, first.playerId);
+
+  const ended = await matchEnded;
+  assert.equal(ended.winnerId, first.playerId);
+});
+
+test("room:createBot: a full game against a Lv10 bot always runs to completion without hanging (botDelayMs 0), and the bot's board never leaks", async () => {
+  await withServer({ botDelayMs: 0 }, async ({ connect }) => {
+    const human = await connect();
+
+    const created = await emit(human, "room:createBot", { nickname: "Solo", level: 10 });
+    assert.equal(created.ok, true);
+    if (!created.ok) throw new Error("unreachable");
+    const humanId = created.playerId as string;
+    const view = created.view as {
+      phase: string;
+      players: { playerId: string; nickname: string; isBot: boolean }[];
+    };
+    assert.equal(view.phase, "draft", "VS Bot skips the lobby entirely - match starts instantly");
+    const botEntry = view.players.find((p) => p.isBot);
+    assert.ok(botEntry, "expected exactly one bot player in the lobby view");
+    assert.match(botEntry!.nickname, /Bot Lv10/);
+
+    const nextState = eventQueue<Record<string, unknown>>(human, "match:state");
+    const matchEnded = waitForEvent<{ winnerId: string | null }>(human, "match:ended");
+
+    const submitRes = await emit(human, "draft:submit", { numbers: identityBoard() });
+    assert.equal(submitRes.ok, true, `expected draft:submit to succeed: ${JSON.stringify(submitRes)}`);
+
+    // First broadcast once both boards are in: calledNumbers still empty.
+    let state = await nextState();
+    assert.deepEqual(state.calledNumbers, []);
+    // The bot's board must never appear anywhere in the human's own view.
+    for (const player of state.players as Record<string, unknown>[]) {
+      assert.equal("board" in player, false, "no player entry (including the bot's) may carry a board field");
+    }
+
+    const called = new Set<number>();
+    let guard = 0;
+    // Loop bound generously above the true worst case (<=25 calls total in
+    // any bingo match) - this is a safety net against a genuine hang, not a
+    // substitute for the match actually finishing.
+    while (state.status !== "finished" && guard < 30) {
+      guard++;
+      if (state.currentTurnPlayerId === humanId) {
+        let n = 1;
+        while (called.has(n)) n++;
+        called.add(n);
+        const callRes = await emit(human, "match:call", { number: n });
+        assert.equal(callRes.ok, true, `expected human's call to succeed: ${JSON.stringify(callRes)}`);
+      }
+      state = await nextState();
+      for (const n of state.calledNumbers as number[]) called.add(n);
+    }
+
+    assert.equal(state.status, "finished", "the match must terminate, whoever wins");
+    const ended = await matchEnded;
+    assert.ok(
+      ended.winnerId === humanId || ended.winnerId === botEntry!.playerId,
+      `winner must be the human or the bot, got ${ended.winnerId}`,
+    );
+  });
+});
+
+test("room:leave from a VS Bot room deletes the room outright - no zombie room left with just the bot in it", async () => {
+  await withServer({ botDelayMs: 0 }, async ({ connect }) => {
+    const human = await connect();
+    const created = await emit(human, "room:createBot", { nickname: "Solo", level: 1 });
+    assert.equal(created.ok, true);
+    if (!created.ok) throw new Error("unreachable");
+    const code = created.code as string;
+
+    // Match is already "playing" (bot submitted at creation, human submits now).
+    const submitRes = await emit(human, "draft:submit", { numbers: identityBoard() });
+    assert.equal(submitRes.ok, true, "match should be underway (bot already submitted at room creation)");
+
+    const leaveRes = await emit(human, "room:leave", {});
+    assert.equal(leaveRes.ok, true);
+
+    const prober = await connect();
+    const joinRes = await emit(prober, "room:join", { code, nickname: "Prober" });
+    assert.equal(joinRes.ok, false);
+    if (joinRes.ok) throw new Error("unreachable");
+    assert.match(joinRes.error, /not found/i, "the room must be gone entirely, not just aborted");
+  });
+});
+
+test("a human's socket disconnecting from a VS Bot room leaves no zombie room behind, even mid-draft before submitting a board", async () => {
+  const human = await connectClient();
+  const created = await emit(human, "room:createBot", { nickname: "Solo", level: 1 });
+  assert.equal(created.ok, true);
+  if (!created.ok) throw new Error("unreachable");
+  const code = created.code as string;
+  assert.equal(
+    (created.view as { phase: string }).phase,
+    "draft",
+    "bot already submitted, human has not yet - room.players has 2 entries here",
+  );
+
+  human.disconnect();
+
+  // The server processes the disconnect asynchronously (after the transport
+  // actually tears down), so poll room:join with bounded retries instead of
+  // a single arbitrary sleep - on a local loopback connection this settles
+  // within a handful of milliseconds in practice.
+  let joinRes: AckResponse | undefined;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const prober = await connectClient();
+    joinRes = await emit(prober, "room:join", { code, nickname: `Prober${attempt}` });
+    if (!joinRes.ok) break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  assert.ok(joinRes && !joinRes.ok, "expected the room to eventually disappear once the disconnect is processed");
+  if (!joinRes || joinRes.ok) throw new Error("unreachable");
+  assert.match(joinRes.error, /not found/i);
 });
 
 test("the winner receives quest:completed for the daily win-1-match quest", async () => {

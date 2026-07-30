@@ -19,7 +19,7 @@
  * - and are never redefined here, so there's a single source of truth.
  */
 
-import type { LobbyView, MatchView } from "../realtime/views.ts";
+import type { LobbyView, MatchView, RoomSummary } from "../realtime/views.ts";
 import type { SkillArgs } from "../engine/match.ts";
 import type { PlazaMessage } from "../plaza/plaza.ts";
 
@@ -30,6 +30,7 @@ export type {
   MatchView,
   MyTurnArmedView,
   PendingSkillView,
+  RoomSummary,
 } from "../realtime/views.ts";
 export type { PlazaMessage } from "../plaza/plaza.ts";
 
@@ -55,11 +56,38 @@ export interface RoomCreatePayload {
    * without one is rejected. Mirrors realtime/rooms.ts's `RoomMode`.
    */
   readonly mode?: "casual" | "standard";
+  /** Room capacity, 2-5 (CONCEPT.md §2's "Create Room: set target pemain 2–5"). Defaults to 5. */
+  readonly maxPlayers?: number;
+  /** Whether this room is discoverable via room:list/room:quick. Defaults to false (private, code-only). */
+  readonly isPublic?: boolean;
 }
 
 export interface RoomJoinPayload {
   readonly code: string;
   readonly nickname: string;
+}
+
+/**
+ * Quick Match (CONCEPT.md §2b): join (or, if none is open, create) a
+ * public casual room targeting `size` players - auto-starts the draft the
+ * instant it fills, no host action needed. See server/API.md's "Quick
+ * Match & Room Browser" section.
+ */
+export interface RoomQuickPayload {
+  readonly nickname: string;
+  /** Target room size, 2-5. */
+  readonly size: number;
+}
+
+/**
+ * VS Bot (CONCEPT.md §2b): creates a private, casual, 2-seat room against a
+ * bot of the given difficulty and jumps straight to the draft phase - see
+ * server/API.md's "VS Bot" section.
+ */
+export interface RoomCreateBotPayload {
+  readonly nickname: string;
+  /** Bot difficulty, 1 (near-random) to 10 (always locally-optimal) - see bot/bot.ts. */
+  readonly level: number;
 }
 
 export interface DraftSubmitPayload {
@@ -143,6 +171,11 @@ export interface RoomJoinedAckData {
   readonly view: LobbyView;
 }
 
+/** Ack for room:list - see server/API.md's "Quick Match & Room Browser" section. Never includes a private room. */
+export interface RoomListAckData {
+  readonly rooms: readonly RoomSummary[];
+}
+
 export interface LobbyAckData {
   readonly view: LobbyView;
 }
@@ -176,6 +209,12 @@ export interface ClientToServerEvents {
   "room:create": (payload: RoomCreatePayload, ack: Ack<RoomJoinedAckData>) => void;
   "room:join": (payload: RoomJoinPayload, ack: Ack<RoomJoinedAckData>) => void;
   "room:leave": (payload: EmptyAckData, ack: Ack<EmptyAckData>) => void;
+  /** Lists public, still-open, "lobby"-phase rooms (Room Browser, CONCEPT.md §2b). Never leaks a private room. */
+  "room:list": (payload: EmptyAckData, ack: Ack<RoomListAckData>) => void;
+  /** Quick Match: join a matching public room or create one, auto-starting the draft once it's full. */
+  "room:quick": (payload: RoomQuickPayload, ack: Ack<RoomJoinedAckData>) => void;
+  /** VS Bot: create a private casual room against a bot and jump straight to the draft phase. */
+  "room:createBot": (payload: RoomCreateBotPayload, ack: Ack<RoomJoinedAckData>) => void;
   "draft:start": (payload: EmptyAckData, ack: Ack<LobbyAckData>) => void;
   "draft:submit": (payload: DraftSubmitPayload, ack: Ack<LobbyAckData>) => void;
   "match:call": (payload: MatchCallPayload, ack: Ack<MatchCallAckData>) => void;

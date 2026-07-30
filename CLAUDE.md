@@ -9,7 +9,7 @@ Baca `CONCEPT.md` untuk game design lengkap sebelum mengubah desain apa pun. Fil
 - Board 5×5. Saat draft phase, pemain menyusun sendiri penempatan angka di board-nya. Board lawan tersembunyi.
 - Pemain memanggil angka SECARA BERGANTIAN (turn-based). Bukan server random. Angka yang dipanggil ter-mark di semua board.
 - Menang: pemain PERTAMA yang menyelesaikan 5 garis (horizontal/vertikal/diagonal). 1 garis = 5 angka ter-mark. 5 garis = B-I-N-G-O.
-- Multiplayer 2–8 pemain per room.
+- Multiplayer 2–5 pemain per room (pembuat room set jumlah target; quick match pilih jumlah; vs bot 10 level kesulitan).
 - Reward menang: XP, season points, leaderboard, kosmetik non-tradeable. Tidak pernah uang/token.
 
 ## Skill System

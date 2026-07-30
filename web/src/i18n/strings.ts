@@ -11,7 +11,25 @@ export interface LocaleStrings {
   common: Record<string, string>;
   nav: Record<string, string>;
   wallet: Record<string, string>;
-  landing: Record<string, string>;
+  landing: {
+    title: string;
+    tagline: string;
+    nicknameLabel: string;
+    nicknameRequiredHint: string;
+    joinCodeLabel: string;
+    joinRoom: string;
+    dailyLink: string;
+    questsLink: string;
+    marketLink: string;
+    /** Quick Match (VS Player) card - CONCEPT.md §2b. */
+    quickMatch: Record<string, string>;
+    /** Room Browser card (room:list). */
+    roomBrowser: Record<string, string>;
+    /** Manual "Buat Room" card (room:create with maxPlayers/isPublic). */
+    createRoom: Record<string, string>;
+    /** VS Bot card (room:createBot). */
+    vsBot: Record<string, string>;
+  };
   play: {
     title: string;
     connecting: string;
@@ -95,16 +113,48 @@ export const strings = {
       title: "TheBingoFi",
       tagline: "Bingo strategis — web2 gameplay, web3 ownership",
       nicknameLabel: "Nickname",
-      createRoom: "Buat Room",
+      nicknameRequiredHint: "Isi nickname dulu untuk memilih mode main",
       joinCodeLabel: "Kode Room",
       joinRoom: "Gabung via Kode",
       dailyLink: "Daily Challenge",
       questsLink: "Quests",
       marketLink: "Marketplace",
-      modeLabel: "Mode Room",
-      modeCasual: "Casual (tanpa skill)",
-      modeStandard: "Standard (pakai skill NFT)",
-      modeStandardHint: "Butuh wallet ter-link untuk pasang loadout — tetap bisa main tanpa skill kalau belum link.",
+      quickMatch: {
+        title: "Quick Match (VS Player)",
+        desc: "Cari lawan instan — pilih jumlah pemain, draft mulai otomatis begitu room penuh.",
+        sizeLabel: "Jumlah pemain",
+      },
+      roomBrowser: {
+        title: "Room Terbuka",
+        desc: "Room publik yang masih menunggu pemain — gabung 1 klik.",
+        refresh: "Segarkan",
+        loading: "Memuat daftar room...",
+        error: "Gagal memuat daftar room",
+        empty: "Belum ada room terbuka — buat sendiri atau quick match.",
+        join: "Gabung",
+        modeCasual: "Casual",
+        modeStandard: "Standard",
+      },
+      createRoom: {
+        title: "Buat Room",
+        desc: "Atur target pemain, mode, dan visibilitas sendiri.",
+        targetPlayersLabel: "Target pemain",
+        modeLabel: "Mode Room",
+        modeCasual: "Casual (tanpa skill)",
+        modeStandard: "Standard (pakai skill NFT)",
+        modeStandardHint: "Butuh wallet ter-link untuk pasang loadout — tetap bisa main tanpa skill kalau belum link.",
+        visibilityLabel: "Visibilitas",
+        visibilityPublic: "Publik (muncul di Room Terbuka)",
+        visibilityPrivate: "Privat (kode saja)",
+        submit: "Buat Room",
+      },
+      vsBot: {
+        title: "VS Bot",
+        desc: "Main solo lawan bot, mulai instan tanpa lobi.",
+        levelLabel: "Level Bot",
+        levelHint: "Lv1 santai → Lv10 brutal",
+        questHint: "Kalahkan Lv1/3/5/7/10 untuk reward quest musiman",
+      },
     },
     play: {
       title: "Room",
@@ -144,6 +194,12 @@ export const strings = {
         loadoutNone: "tanpa skill",
         roomCodeCopy: "Salin Kode",
         roomCodeCopied: "Kode disalin",
+        playersSuffix: "pemain",
+        visibilityPublic: "Publik",
+        visibilityPrivate: "Privat",
+        waitingForPlayers: "Menunggu pemain",
+        autoStartNote: "match mulai otomatis saat penuh",
+        botBadge: "BOT",
       },
       draft: {
         title: "Susun Board",
@@ -333,16 +389,48 @@ export const strings = {
       title: "TheBingoFi",
       tagline: "Strategic bingo — web2 gameplay, web3 ownership",
       nicknameLabel: "Nickname",
-      createRoom: "Create Room",
+      nicknameRequiredHint: "Enter a nickname first to pick a game mode",
       joinCodeLabel: "Room Code",
       joinRoom: "Join via Code",
       dailyLink: "Daily Challenge",
       questsLink: "Quests",
       marketLink: "Marketplace",
-      modeLabel: "Room Mode",
-      modeCasual: "Casual (no skills)",
-      modeStandard: "Standard (uses skill NFTs)",
-      modeStandardHint: "Needs a linked wallet to set a loadout — you can still play without one, no skills.",
+      quickMatch: {
+        title: "Quick Match (VS Player)",
+        desc: "Find an opponent instantly — pick a player count, the draft auto-starts once the room fills up.",
+        sizeLabel: "Player count",
+      },
+      roomBrowser: {
+        title: "Open Rooms",
+        desc: "Public rooms still waiting for players — join in one click.",
+        refresh: "Refresh",
+        loading: "Loading rooms...",
+        error: "Failed to load room list",
+        empty: "No open rooms yet — create one or try Quick Match.",
+        join: "Join",
+        modeCasual: "Casual",
+        modeStandard: "Standard",
+      },
+      createRoom: {
+        title: "Create Room",
+        desc: "Set your own target player count, mode, and visibility.",
+        targetPlayersLabel: "Target players",
+        modeLabel: "Room Mode",
+        modeCasual: "Casual (no skills)",
+        modeStandard: "Standard (uses skill NFTs)",
+        modeStandardHint: "Needs a linked wallet to set a loadout — you can still play without one, no skills.",
+        visibilityLabel: "Visibility",
+        visibilityPublic: "Public (shown in Open Rooms)",
+        visibilityPrivate: "Private (code only)",
+        submit: "Create Room",
+      },
+      vsBot: {
+        title: "VS Bot",
+        desc: "Play solo against a bot, starts instantly, no lobby.",
+        levelLabel: "Bot Level",
+        levelHint: "Lv1 easygoing → Lv10 brutal",
+        questHint: "Beat Lv1/3/5/7/10 for seasonal quest rewards",
+      },
     },
     play: {
       title: "Room",
@@ -382,6 +470,12 @@ export const strings = {
         loadoutNone: "no skills",
         roomCodeCopy: "Copy Code",
         roomCodeCopied: "Code copied",
+        playersSuffix: "players",
+        visibilityPublic: "Public",
+        visibilityPrivate: "Private",
+        waitingForPlayers: "Waiting for players",
+        autoStartNote: "match starts automatically once full",
+        botBadge: "BOT",
       },
       draft: {
         title: "Arrange Board",

@@ -14,6 +14,12 @@ export interface LobbyProps {
   readonly players: readonly LobbyPlayerView[];
   readonly hostId: string;
   readonly mode: LobbyView["mode"];
+  /** Room capacity, 2-5 - paired with players.length to render "X/Y pemain". */
+  readonly maxPlayers: number;
+  /** "public" rooms are discoverable via room:list/room:quick, "private" are code-only. */
+  readonly visibility: LobbyView["visibility"];
+  /** True when this room was entered via Quick Match (client-side only, see hooks/useRoom.ts's RoomEntryKind) - hides the host "start draft" button in favor of an "auto-starts when full" note, since Quick Match rooms auto-advance to draft server-side with no draft:start call at all. */
+  readonly isQuickMatch: boolean;
   readonly playerId: string;
   readonly isHost: boolean;
   readonly canStart: boolean;
@@ -28,12 +34,15 @@ export interface LobbyProps {
   readonly loadoutPicker?: ReactNode;
 }
 
-/** Dumb: pre-match lobby - room code to share (with copy), player list + loadouts ("standard" mode only), wallet-link CTA, host-only "start draft" action, leave action. */
+/** Dumb: pre-match lobby - room code to share (with copy), slot count + visibility badge, player list + loadouts ("standard" mode only), wallet-link CTA, host-only "start draft" action (or an auto-start note for Quick Match rooms), leave action. */
 export default function Lobby({
   code,
   players,
   hostId,
   mode,
+  maxPlayers,
+  visibility,
+  isQuickMatch,
   playerId,
   isHost,
   canStart,
@@ -76,6 +85,18 @@ export default function Lobby({
         >
           {copied ? t.lobby.roomCodeCopied : t.lobby.roomCodeCopy}
         </button>
+        <span className="ml-auto rounded-full border border-slate-700 px-2.5 py-1 text-xs font-semibold text-slate-300">
+          {players.length}/{maxPlayers} {t.lobby.playersSuffix}
+        </span>
+        <span
+          className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+            visibility === "public"
+              ? "border-emerald-600 text-emerald-300"
+              : "border-slate-600 text-slate-400"
+          }`}
+        >
+          {visibility === "public" ? t.lobby.visibilityPublic : t.lobby.visibilityPrivate}
+        </span>
       </div>
 
       <PlayerList players={players} hostId={hostId} mode={mode} />
@@ -136,18 +157,24 @@ export default function Lobby({
         </section>
       )}
 
-      {isHost && (
-        <div className="space-y-1">
-          <button
-            type="button"
-            onClick={onStartDraft}
-            disabled={pending || !canStart}
-            className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {t.lobby.startDraft}
-          </button>
-          {!canStart && <p className="text-xs text-amber-400">{t.lobby.needMorePlayers}</p>}
-        </div>
+      {isQuickMatch ? (
+        <p className="rounded border border-indigo-800 bg-indigo-950/40 px-3 py-2 text-sm text-indigo-300">
+          {t.lobby.waitingForPlayers} {players.length}/{maxPlayers} — {t.lobby.autoStartNote}
+        </p>
+      ) : (
+        isHost && (
+          <div className="space-y-1">
+            <button
+              type="button"
+              onClick={onStartDraft}
+              disabled={pending || !canStart}
+              className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t.lobby.startDraft}
+            </button>
+            {!canStart && <p className="text-xs text-amber-400">{t.lobby.needMorePlayers}</p>}
+          </div>
+        )
       )}
 
       <button

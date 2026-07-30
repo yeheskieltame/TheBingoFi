@@ -48,26 +48,26 @@ test("createMatch accepts 2 players", () => {
   assert.deepEqual(state.calledNumbers, []);
 });
 
-test("createMatch accepts 8 players", () => {
-  const players: MatchPlayer[] = Array.from({ length: 8 }, (_, i) => ({
+test("createMatch accepts 5 players", () => {
+  const players: MatchPlayer[] = Array.from({ length: 5 }, (_, i) => ({
     id: `p${i + 1}`,
     board: identityBoard(),
   }));
   const state = createMatch(players);
-  assert.equal(state.players.length, 8);
+  assert.equal(state.players.length, 5);
   assert.equal(state.status, "in_progress");
 });
 
 test("createMatch rejects fewer than 2 players", () => {
-  assert.throws(() => createMatch([{ id: "p1", board: identityBoard() }]), /2 and 8/);
+  assert.throws(() => createMatch([{ id: "p1", board: identityBoard() }]), /2 and 5/);
 });
 
-test("createMatch rejects more than 8 players", () => {
-  const players: MatchPlayer[] = Array.from({ length: 9 }, (_, i) => ({
+test("createMatch rejects more than 5 players", () => {
+  const players: MatchPlayer[] = Array.from({ length: 6 }, (_, i) => ({
     id: `p${i + 1}`,
     board: identityBoard(),
   }));
-  assert.throws(() => createMatch(players), /2 and 8/);
+  assert.throws(() => createMatch(players), /2 and 5/);
 });
 
 test("createMatch rejects an invalid board", () => {

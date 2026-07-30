@@ -15,6 +15,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { arrangeBoard, type Rng } from "../bot/bot.ts";
 import {
   type Board,
   type MatchPlayer,
@@ -30,7 +31,8 @@ import {
 } from "../engine/index.ts";
 
 export const ROOM_CODE_LENGTH = 6;
-export const MAX_PLAYERS = 8;
+/** Room capacity ceiling AND default - mirrors engine/match.ts's MAX_PLAYERS (CONCEPT.md §2: "2–5 pemain per room"). Individual rooms may set a smaller `maxPlayers` (>= MIN_PLAYERS) via CreateRoomOptions, never larger. */
+export const MAX_PLAYERS = 5;
 
 /** Uppercase alphanumeric, no 0/O/1/I to avoid ambiguity when read aloud/typed. */
 const ROOM_CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -42,6 +44,27 @@ export type RoomPhase = "lobby" | "draft" | "playing" | "finished";
  * implemented yet). Chosen at room:create; fixed for the room's lifetime.
  */
 export type RoomMode = "casual" | "standard";
+
+/**
+ * "public" rooms are discoverable via room:list and eligible for room:quick
+ * matching (CONCEPT.md §2b's "Room Browser"/"Quick Match"). "private"
+ * (default) rooms are code-only - never listed, never auto-matched into.
+ * Chosen at room:create; fixed for the room's lifetime.
+ */
+export type RoomVisibility = "public" | "private";
+
+/**
+ * Which bot (if any) occupies a seat in this room - set once, at
+ * creation, by createBotRoom (CONCEPT.md §2b's "VS Bot"). `playerId`
+ * matches one entry in `players` (see bot/bot.ts's isBotPlayerId - always
+ * `bot:<uuid>`); `level` (1-10) drives bot/bot.ts's pickCall difficulty and
+ * is echoed back into quest events (see ../realtime/server.ts) so the bot
+ * ladder quests (QuestFilter.minBotLevel) can track it.
+ */
+export interface RoomBot {
+  readonly level: number;
+  readonly playerId: string;
+}
 
 /**
  * Max skills a loadout may contain - mirrors chain/reader.ts's
@@ -67,6 +90,19 @@ export interface Room {
   readonly code: string;
   hostId: string;
   readonly mode: RoomMode;
+  /** Room capacity, 2-5 (CONCEPT.md §2's "Create Room: set target pemain 2–5") - default MAX_PLAYERS (5). Fixed for the room's lifetime. */
+  readonly maxPlayers: number;
+  /** Discoverability - see RoomVisibility. Default "private". */
+  readonly visibility: RoomVisibility;
+  /**
+   * Quick-match rooms only (CONCEPT.md §2b): once `players.length` reaches
+   * `maxPlayers`, the room advances straight into "draft" without a host
+   * action - see joinRoom. Default false (manual rooms always need an
+   * explicit draft:start).
+   */
+  readonly autoStart: boolean;
+  /** Set only for a VS Bot room (room:createBot) - see RoomBot. */
+  bot?: RoomBot;
   players: RoomPlayer[];
   phase: RoomPhase;
   match?: MatchState;
@@ -107,16 +143,34 @@ export interface CreateRoomOptions {
   readonly mode?: RoomMode;
   /** Wallet already linked on this socket (via wallet:link) before creating the room, if any. */
   readonly wallet?: string;
+  /** Room capacity, 2-5. Defaults to MAX_PLAYERS (5). */
+  readonly maxPlayers?: number;
+  /** Defaults to "private". */
+  readonly visibility?: RoomVisibility;
+  /** Defaults to false - see Room.autoStart. */
+  readonly autoStart?: boolean;
+}
+
+function validateMaxPlayers(maxPlayers: number): void {
+  if (!Number.isInteger(maxPlayers) || maxPlayers < MIN_PLAYERS || maxPlayers > MAX_PLAYERS) {
+    throw new Error(`maxPlayers must be an integer between ${MIN_PLAYERS} and ${MAX_PLAYERS}, got ${maxPlayers}`);
+  }
 }
 
 /** Creates a new lobby with `nickname` as the sole player and host. */
 export function createRoom(nickname: string, opts: CreateRoomOptions = {}): { room: Room; playerId: string } {
+  const maxPlayers = opts.maxPlayers ?? MAX_PLAYERS;
+  validateMaxPlayers(maxPlayers);
+
   const playerId = randomUUID();
   const code = generateRoomCode();
   const room: Room = {
     code,
     hostId: playerId,
     mode: opts.mode ?? "casual",
+    maxPlayers,
+    visibility: opts.visibility ?? "private",
+    autoStart: opts.autoStart ?? false,
     players: [{ playerId, nickname, connected: true, wallet: opts.wallet }],
     phase: "lobby",
   };
@@ -131,7 +185,10 @@ export interface JoinRoomOptions {
 
 /**
  * Joins an existing room. Only allowed while the room is still accepting
- * players (lobby or draft) and not yet full (MAX_PLAYERS).
+ * players (lobby or draft) and not yet full (room.maxPlayers). If this join
+ * fills an autoStart room (CONCEPT.md §2b's Quick Match) while it's still
+ * in "lobby", the room advances straight into "draft" - no host action
+ * needed, matching room:quick's "auto-mulai draft begitu penuh".
  */
 export function joinRoom(
   code: string,
@@ -143,12 +200,114 @@ export function joinRoom(
   if (room.phase !== "lobby" && room.phase !== "draft") {
     throw new Error(`Cannot join room ${code}: match already in progress`);
   }
-  if (room.players.length >= MAX_PLAYERS) {
+  if (room.players.length >= room.maxPlayers) {
     throw new Error(`Room ${code} is full`);
   }
 
   const playerId = randomUUID();
   room.players.push({ playerId, nickname, connected: true, wallet: opts.wallet });
+
+  if (room.autoStart && room.phase === "lobby" && room.players.length >= room.maxPlayers) {
+    room.phase = "draft";
+  }
+
+  return { room, playerId };
+}
+
+/**
+ * Public, joinable rooms for room:list / the Room Browser (CONCEPT.md
+ * §2b): "public" visibility, still in "lobby" (draft has already started
+ * drafting boards - joining mid-draft would leave a player behind), and
+ * with an open seat. Never returns a private room - see views.ts's
+ * roomSummaryView for the redaction that keeps players[]/match state out
+ * of what's sent back too.
+ */
+export function listJoinableRooms(): readonly Room[] {
+  return [...rooms.values()].filter(
+    (room) => room.visibility === "public" && room.phase === "lobby" && room.players.length < room.maxPlayers,
+  );
+}
+
+export interface QuickMatchOptions {
+  /** Wallet already linked on this socket (via wallet:link), if any. */
+  readonly wallet?: string;
+}
+
+/**
+ * Quick Match (CONCEPT.md §2b): joins an existing public, casual,
+ * autoStart, still-open room of exactly `size` maxPlayers if one exists,
+ * otherwise creates a fresh one (host = this caller) - same ack shape as
+ * createRoom/joinRoom either way, so callers (server.ts) don't need to
+ * branch on which happened. Casual-only by design (CONCEPT.md's "pilih
+ * jumlah pemain (2–5) -> auto-join room publik yang cocok" describes VS
+ * Player quick match, which never carries a skill loadout).
+ */
+export function quickMatch(
+  nickname: string,
+  size: number,
+  opts: QuickMatchOptions = {},
+): { room: Room; playerId: string } {
+  validateMaxPlayers(size);
+
+  const existing = [...rooms.values()].find(
+    (room) =>
+      room.mode === "casual" &&
+      room.visibility === "public" &&
+      room.autoStart &&
+      room.phase === "lobby" &&
+      room.maxPlayers === size &&
+      room.players.length < room.maxPlayers,
+  );
+
+  if (existing) {
+    return joinRoom(existing.code, nickname, { wallet: opts.wallet });
+  }
+
+  return createRoom(nickname, {
+    mode: "casual",
+    visibility: "public",
+    autoStart: true,
+    maxPlayers: size,
+    wallet: opts.wallet,
+  });
+}
+
+export interface CreateBotRoomOptions {
+  /** Source of randomness for the bot's drafted board (bot/bot.ts's arrangeBoard) - defaults to Math.random. Overridable for deterministic tests. */
+  readonly rng?: Rng;
+}
+
+/**
+ * VS Bot (CONCEPT.md §2b): a private, casual, 2-seat room with `nickname`
+ * as the human host plus one bot player (id `bot:<uuid>`, nickname
+ * `Bot Lv<level>`) at the given difficulty (1-10, see bot/bot.ts's
+ * MIN_BOT_LEVEL/MAX_BOT_LEVEL). Skips the lobby entirely - the room starts
+ * straight in "draft" ("match mulai instan") and the bot immediately
+ * "submits" a random board via submitBoard (bot/bot.ts's arrangeBoard),
+ * same path a human's draft:submit takes. The match itself only actually
+ * starts once the human ALSO submits a board (submitBoard's usual "every
+ * player has one" gate) - see realtime/server.ts for what schedules the
+ * bot's own turns once play begins.
+ */
+export async function createBotRoom(
+  nickname: string,
+  level: number,
+  opts: CreateBotRoomOptions = {},
+): Promise<{ room: Room; playerId: string }> {
+  if (!Number.isInteger(level) || level < 1 || level > 10) {
+    throw new Error(`Bot level must be an integer between 1 and 10, got ${level}`);
+  }
+  const rng = opts.rng ?? Math.random;
+
+  const { room, playerId } = createRoom(nickname, { mode: "casual", visibility: "private", maxPlayers: 2 });
+
+  const botPlayerId = `bot:${randomUUID()}`;
+  room.players.push({ playerId: botPlayerId, nickname: `Bot Lv${level}`, connected: true });
+  room.bot = { level, playerId: botPlayerId };
+  room.phase = "draft";
+
+  await submitBoard(room.code, botPlayerId, arrangeBoard(rng));
+
   return { room, playerId };
 }
 
@@ -397,9 +556,15 @@ export interface ExitResult {
 
 /**
  * A player is gone, either because they deliberately left (room:leave) or
- * their socket disconnected - the rule is the same either way:
- *  - phase "playing": match is aborted (phase -> "finished", no winner);
- *    the player is kept in the room, just marked disconnected.
+ * their socket disconnected:
+ *  - a VS Bot room (room.bot set) only ever has one human seat - the room
+ *    is deleted OUTRIGHT regardless of phase, since a bot can never play
+ *    alone (CLAUDE.md step 3: "bot jangan bikin room zombie"; `room:
+ *    undefined` in the result reflects that it's gone). server.ts is
+ *    responsible for clearing that room's scheduled bot-turn timer, since
+ *    that timer lives in the realtime layer, not here.
+ *  - otherwise, phase "playing": match is aborted (phase -> "finished", no
+ *    winner); the player is kept in the room, just marked disconnected.
  *  - phase "finished": no-op besides marking disconnected.
  *  - phase "lobby"/"draft": player is fully removed (host transfer / empty
  *    room deletion via leaveRoom) - there's no match to protect yet.
@@ -410,6 +575,12 @@ export interface ExitResult {
 export function exitRoom(code: string, playerId: string): ExitResult {
   const room = rooms.get(code);
   if (!room) return { room: undefined, matchAborted: false };
+
+  if (room.bot) {
+    const matchAborted = room.phase === "playing";
+    rooms.delete(code);
+    return { room: undefined, matchAborted };
+  }
 
   if (room.phase === "playing") {
     const player = room.players.find((p) => p.playerId === playerId);

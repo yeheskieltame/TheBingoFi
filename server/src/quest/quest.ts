@@ -18,10 +18,16 @@ export type QuestWindow = "daily" | "weekly" | "season";
  *  - effectType: only relevant to "skill_used" events, matches exact effectType.
  *  - anyLineIndexIn: only relevant to "line_completed" events, matches when
  *    the event's lineIndexes intersects this set (e.g. [10, 11] for "any diagonal").
+ *  - minBotLevel: only relevant to "match_won" events, matches when the
+ *    event's botLevel is set and >= minBotLevel (CONCEPT.md §2b's bot
+ *    ladder quests - "Kalahkan Bot Lv3" is satisfied by beating Lv3 OR
+ *    anything harder, same as clearing a difficulty milestone). A
+ *    human-vs-human win (botLevel absent) never matches.
  */
 export interface QuestFilter {
   readonly effectType?: string;
   readonly anyLineIndexIn?: readonly number[];
+  readonly minBotLevel?: number;
 }
 
 export interface QuestReward {
@@ -101,6 +107,12 @@ function eventMatchesFilter(event: GameEvent, filter: QuestFilter | undefined): 
     if (!overlaps) return false;
   }
 
+  if (filter.minBotLevel !== undefined) {
+    if (event.type !== "match_won" || event.botLevel === undefined || event.botLevel < filter.minBotLevel) {
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -174,8 +186,15 @@ export function applyEvent(
 /**
  * 5 starter quests straight from CONCEPT.md §7.2 - daily quest list ("main
  * 3 match", "menang 1x", "selesaikan garis diagonal") plus two weekly
- * quests ("menang 10 match", "undang 1 teman"). Real content lives in a
- * catalog/DB later; this is the reference shape + something to test against.
+ * quests ("menang 10 match", "undang 1 teman") - PLUS 5 season "bot
+ * ladder" milestone quests (CONCEPT.md §2b: "quest milestone 'Kalahkan Bot
+ * Lv1/3/5/7/10' ... onboarding: pemain baru diarahkan ke bot dulu sebelum
+ * ranked"), each gated on QuestFilter.minBotLevel so a single win against a
+ * high-enough bot clears every lower milestone at once (see
+ * eventMatchesFilter). Reward XP/seasonPoints step up with difficulty;
+ * Lv10 alone also grants a cosmeticId (CONCEPT.md: "level tertinggi yang
+ * terkalahkan jadi badge profil"). Real content lives in a catalog/DB
+ * later; this is the reference shape + something to test against.
  */
 export const exampleQuests: readonly QuestDef[] = [
   {
@@ -218,5 +237,50 @@ export const exampleQuests: readonly QuestDef[] = [
     target: 1,
     window: "weekly",
     reward: { xp: 80, seasonPoints: 15 },
+  },
+  {
+    id: "season_beat_bot_lv1",
+    title: "Kalahkan Bot Lv1",
+    eventType: "match_won",
+    target: 1,
+    window: "season",
+    reward: { xp: 50, seasonPoints: 10 },
+    filter: { minBotLevel: 1 },
+  },
+  {
+    id: "season_beat_bot_lv3",
+    title: "Kalahkan Bot Lv3",
+    eventType: "match_won",
+    target: 1,
+    window: "season",
+    reward: { xp: 100, seasonPoints: 20 },
+    filter: { minBotLevel: 3 },
+  },
+  {
+    id: "season_beat_bot_lv5",
+    title: "Kalahkan Bot Lv5",
+    eventType: "match_won",
+    target: 1,
+    window: "season",
+    reward: { xp: 200, seasonPoints: 40 },
+    filter: { minBotLevel: 5 },
+  },
+  {
+    id: "season_beat_bot_lv7",
+    title: "Kalahkan Bot Lv7",
+    eventType: "match_won",
+    target: 1,
+    window: "season",
+    reward: { xp: 350, seasonPoints: 70 },
+    filter: { minBotLevel: 7 },
+  },
+  {
+    id: "season_beat_bot_lv10",
+    title: "Kalahkan Bot Lv10",
+    eventType: "match_won",
+    target: 1,
+    window: "season",
+    reward: { xp: 500, seasonPoints: 100, cosmeticId: "badge_bot_lv10_slayer" },
+    filter: { minBotLevel: 10 },
   },
 ];

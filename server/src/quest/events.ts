@@ -15,7 +15,19 @@ import type { MatchState } from "../engine/match.ts";
 /** Discriminated union of every gameplay event the quest/social layer cares about. */
 export type GameEvent =
   | { readonly type: "match_played"; readonly playerId: string }
-  | { readonly type: "match_won"; readonly playerId: string }
+  | {
+      readonly type: "match_won";
+      readonly playerId: string;
+      /**
+       * Set only when this win was against a VS Bot match (CONCEPT.md §2b's
+       * "bot ladder" quests) - the bot's difficulty level (1-10), added by
+       * the realtime layer (../realtime/server.ts) AFTER eventsFromCall,
+       * which has no idea a bot was even involved (see bot/bot.ts's doc -
+       * the engine/quest layers never see bot-specific concepts). Absent
+       * for a human-vs-human win.
+       */
+      readonly botLevel?: number;
+    }
   | {
       readonly type: "line_completed";
       readonly playerId: string;
