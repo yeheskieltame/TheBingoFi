@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { markedCellsFor } from "@thebingofi/server/engine";
 import type { MatchView } from "@thebingofi/server/protocol";
 
@@ -31,6 +34,17 @@ export default function MatchBoard({ view, playerId, onCall, pending, skillSelec
   const currentTurnPlayer = view.players.find((p) => p.playerId === view.currentTurnPlayerId);
   const me = view.players.find((p) => p.playerId === playerId);
   const selecting = Boolean(skillSelection && onSelectSkillCell);
+
+  const marks = view.board
+    ? markedCellsFor(view.board, calledSet, new Set(view.ghostNumbers ?? []), view.daubedCells ?? [])
+    : [];
+  // Sel mana yang BARU ter-mark pada render ini - dipakai untuk animasi daub,
+  // momen paling sering terjadi di game (BRIEF.md §4). Dibandingkan saat render
+  // (bukan lewat effect) supaya animasinya jalan di frame yang sama.
+  const marksKey = marks.map((m) => (m ? "1" : "0")).join("");
+  const [prevMarksKey, setPrevMarksKey] = useState(marksKey);
+  if (prevMarksKey !== marksKey) setPrevMarksKey(marksKey);
+  const justMarked = (index: number) => marks[index] === true && prevMarksKey[index] === "0";
   const canCall = isMyTurn && !selecting && !pending;
 
   return (
@@ -61,7 +75,7 @@ export default function MatchBoard({ view, playerId, onCall, pending, skillSelec
         {view.board && (
           <div className="rounded-3xl bg-night/40 p-2.5 ring-1 ring-white/10">
             <div className="grid grid-cols-5 gap-1.5">
-              {markedCellsFor(view.board, calledSet, new Set(view.ghostNumbers ?? []), view.daubedCells ?? []).map(
+              {marks.map(
                 (marked, index) => {
                   const number = view.board![index]!;
                   if (selecting) {
@@ -91,6 +105,8 @@ export default function MatchBoard({ view, playerId, onCall, pending, skillSelec
                       disabled={!callable}
                       onClick={callable ? () => onCall(number) : undefined}
                       className={`size-12 rounded-xl font-display text-base font-bold transition-all sm:size-14 sm:text-lg ${
+                        justMarked(index) ? "animate-daub" : ""
+                      } ${
                         marked
                           ? "bg-frost text-glacier-ink shadow-lg shadow-frost/20 ring-1 ring-frost"
                           : callable

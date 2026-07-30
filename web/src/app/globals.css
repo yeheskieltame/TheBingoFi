@@ -78,3 +78,51 @@ button:disabled,
     animation: none;
   }
 }
+
+/*
+ * Juice in-match (BRIEF.md §4 P1). Dua momen paling sering/paling berarti:
+ * sel ter-mark ("daub") dan huruf BINGO menyala. Keduanya animasi singkat -
+ * status permainan harus tetap terbaca sekejap, bukan tertutup efek.
+ */
+@keyframes daub-pop {
+  0% {
+    transform: scale(0.82);
+    box-shadow: 0 0 0 0 rgba(248, 251, 255, 0.65);
+  }
+  55% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 14px rgba(248, 251, 255, 0);
+  }
+}
+
+.animate-daub {
+  animation: daub-pop 0.45s ease-out;
+}
+
+@keyframes letter-pop {
+  0% {
+    transform: scale(0.5) rotate(-8deg);
+    opacity: 0.4;
+  }
+  60% {
+    transform: scale(1.25) rotate(3deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.animate-letter {
+  animation: letter-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-daub,
+  .animate-letter {
+    animation: none;
+  }
+}

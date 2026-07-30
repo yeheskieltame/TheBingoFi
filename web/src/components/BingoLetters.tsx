@@ -1,3 +1,7 @@
+"use client";
+
+import { useState } from "react";
+
 const LETTERS = ["B", "I", "N", "G", "O"] as const;
 
 export interface BingoLettersProps {
@@ -15,6 +19,13 @@ export interface BingoLettersProps {
  */
 export default function BingoLetters({ count, compact = false }: BingoLettersProps) {
   const lit = Math.min(count, LETTERS.length);
+
+  // "Adjust state during render" (react.dev's "You Might Not Need an Effect"):
+  // huruf yang BARU menyala pada render ini dianimasikan sekali. Tanpa ini
+  // seluruh deretan ikut memantul tiap kali komponen render ulang.
+  const [prevLit, setPrevLit] = useState(lit);
+  if (prevLit !== lit) setPrevLit(lit);
+  const justLitFrom = prevLit < lit ? prevLit : lit;
   return (
     <span className={`inline-flex ${compact ? "gap-0.5" : "gap-1.5"}`} aria-label={`${lit}/5 BINGO`}>
       {LETTERS.map((letter, i) => (
@@ -26,7 +37,7 @@ export default function BingoLetters({ count, compact = false }: BingoLettersPro
             i < lit
               ? "bg-frost text-glacier-ink shadow-lg shadow-frost/30 ring-1 ring-frost"
               : "bg-white/5 text-ice/25 ring-1 ring-white/10"
-          }`}
+          } ${!compact && i >= justLitFrom && i < lit ? "animate-letter" : ""}`}
         >
           {letter}
         </span>

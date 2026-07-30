@@ -1,3 +1,8 @@
+"use client";
+
+import { motion } from "motion/react";
+
+import BingoLetters from "@/components/BingoLetters";
 import { useLocale } from "@/hooks/useLocale";
 import { strings } from "@/i18n/strings";
 
@@ -19,7 +24,15 @@ const REASON_KEY: Record<string, "reasonPlayerLeft" | "reasonPlayerDisconnected"
   player_disconnected: "reasonPlayerDisconnected",
 };
 
-/** Dumb: match:ended screen - winner (or why the match was aborted), a rematch action, and a way back to the landing page. */
+/**
+ * Dumb: layar match:ended - pemenang (atau alasan match dibatalkan), rematch,
+ * dan jalan pulang.
+ *
+ * Dibuat sebagai momen, bukan sekadar notifikasi (BRIEF.md §4 P1 "layar
+ * menang/kalah yang layak di-screenshot"): panel masuk dengan spring, huruf
+ * B-I-N-G-O menyala penuh, nama pemenang jadi elemen terbesar. Match yang
+ * batal tidak ikut dirayakan - tidak ada yang menang di situ.
+ */
 export default function MatchResult({ winnerId, reason, players, onBackToLanding, onPlayAgain }: MatchResultProps) {
   const locale = useLocale();
   const t = strings[locale].play.result;
@@ -27,40 +40,63 @@ export default function MatchResult({ winnerId, reason, players, onBackToLanding
   const reasonKey = reason ? REASON_KEY[reason] : undefined;
 
   return (
-    <section className="space-y-5 rounded-3xl border border-white/10 bg-night/60 p-8 text-center backdrop-blur-md">
-      <h2 className="font-display text-3xl font-bold tracking-tight text-frost">{t.title}</h2>
-
-      {winnerId ? (
-        <div className="space-y-2">
-          <p aria-hidden className="text-5xl">🏆</p>
-          <p className="text-sm uppercase tracking-wide text-ice/50">{t.winner}</p>
-          <p className="font-display text-2xl font-bold text-frost">{winner?.nickname ?? winnerId}</p>
-        </div>
-      ) : (
-        <p className="text-sm text-ice/60">
-          {t.noWinner}
-          {reasonKey ? ` · ${t[reasonKey]}` : reason ? ` · ${reason}` : ""}
-        </p>
+    <motion.section
+      initial={{ opacity: 0, scale: 0.92, y: 16 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 320, damping: 26 }}
+      className={`relative overflow-hidden rounded-3xl border p-8 text-center backdrop-blur-md ${
+        winnerId ? "border-frost/30 bg-gradient-to-b from-glacier-deep/50 to-night" : "border-white/10 bg-night/60"
+      }`}
+    >
+      {winnerId && (
+        <div aria-hidden className="pointer-events-none absolute inset-x-0 -top-24 h-48 bg-frost/20 blur-3xl" />
       )}
 
-      <div className="flex flex-wrap justify-center gap-2">
-        {onPlayAgain && (
+      <div className="relative space-y-5">
+        <h2 className="font-display text-2xl font-bold uppercase tracking-[0.2em] text-frost/70">{t.title}</h2>
+
+        {winnerId ? (
+          <>
+            <motion.div
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.12, type: "spring", stiffness: 300, damping: 18 }}
+              className="flex justify-center"
+            >
+              <BingoLetters count={5} />
+            </motion.div>
+
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-wide text-ice/45">{t.winner}</p>
+              <p className="font-display text-3xl font-bold text-frost sm:text-4xl">{winner?.nickname ?? winnerId}</p>
+            </div>
+          </>
+        ) : (
+          <p className="text-sm text-ice/60">
+            {t.noWinner}
+            {reasonKey ? ` · ${t[reasonKey]}` : reason ? ` · ${reason}` : ""}
+          </p>
+        )}
+
+        <div className="flex flex-wrap justify-center gap-2 pt-1">
+          {onPlayAgain && (
+            <button
+              type="button"
+              onClick={onPlayAgain}
+              className="rounded-full bg-glacier-deep px-8 py-2.5 font-display text-base font-bold text-frost shadow-lg shadow-glacier-deep/40 transition-colors hover:bg-glacier"
+            >
+              {t.playAgain}
+            </button>
+          )}
           <button
             type="button"
-            onClick={onPlayAgain}
-            className="rounded-full bg-glacier-deep px-8 py-2.5 font-display text-base font-bold text-frost shadow-lg shadow-glacier-deep/40 transition-colors hover:bg-glacier"
+            onClick={onBackToLanding}
+            className="rounded-full border border-white/15 px-6 py-2.5 font-display text-base font-semibold text-ice transition-colors hover:border-white/35 hover:text-frost"
           >
-            {strings[locale].play.result.playAgain}
+            {strings[locale].common.back}
           </button>
-        )}
-        <button
-          type="button"
-          onClick={onBackToLanding}
-          className="rounded-full border border-white/15 px-6 py-2.5 font-display text-base font-semibold text-ice transition-colors hover:border-white/35 hover:text-frost"
-        >
-          {strings[locale].common.back}
-        </button>
+        </div>
       </div>
-    </section>
+    </motion.section>
   );
 }
