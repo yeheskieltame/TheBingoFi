@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { LuChevronDown, LuLogOut, LuUser } from "react-icons/lu";
 
 import { useLocale } from "@/hooks/useLocale";
 import { useWallet } from "@/hooks/useWallet";
@@ -37,6 +39,30 @@ export default function Header() {
   const t = strings[locale];
   const wallet = useWallet();
   const pathname = usePathname();
+
+  /** Menu wallet (profil + putuskan). Dulu address dan Disconnect dua pill
+   *  terpisah; digabung supaya bar kanan tidak sesak dan aksinya terkelompok. */
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const walletMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!walletMenuOpen) return;
+    function onPointerDown(event: PointerEvent) {
+      if (!walletMenuRef.current?.contains(event.target as Node)) setWalletMenuOpen(false);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setWalletMenuOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [walletMenuOpen]);
+
+  // Menu ikut tertutup begitu pindah halaman (mis. klik "Profilku").
+  useEffect(() => setWalletMenuOpen(false), [pathname]);
 
   function toggleLocale() {
     setLocale(locale === "id" ? "en" : "id");
@@ -110,22 +136,50 @@ export default function Header() {
                   {wallet.isSwitchingNetwork ? t.wallet.switching : t.wallet.switchNetwork}
                 </button>
               )}
-              {/* Address pill SEKALIGUS pintu ke profil - satu elemen, bukan dua
-                  (tombol "My Profile" terpisah bikin bar kanan sesak & wrap). */}
-              <Link
-                href={`/profile/${wallet.address}`}
-                title={`${t.nav.profile} · ${wallet.address}`}
-                className="hidden h-9 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-3 font-mono text-xs text-ice transition-colors hover:border-white/30 hover:text-frost sm:flex"
-              >
-                {truncateAddress(wallet.address ?? "")}
-              </Link>
-              <button
-                type="button"
-                onClick={wallet.disconnect}
-                className="flex h-9 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-4 font-display text-sm font-semibold text-ice transition-colors hover:border-white/30 hover:text-frost"
-              >
-                {t.wallet.disconnect}
-              </button>
+              {/* Satu pill address + menu: profil dan putuskan jadi isi dropdown. */}
+              <div ref={walletMenuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setWalletMenuOpen((open) => !open)}
+                  aria-haspopup="menu"
+                  aria-expanded={walletMenuOpen}
+                  className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-white/15 pl-3 pr-2 font-mono text-xs text-ice transition-colors hover:border-white/30 hover:text-frost"
+                >
+                  {truncateAddress(wallet.address ?? "")}
+                  <LuChevronDown
+                    aria-hidden
+                    className={`size-3.5 transition-transform ${walletMenuOpen ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {walletMenuOpen && (
+                  <div
+                    role="menu"
+                    className="absolute right-0 top-11 z-50 w-48 overflow-hidden rounded-2xl border border-white/12 bg-night/95 py-1 shadow-2xl shadow-black/60 backdrop-blur-md"
+                  >
+                    <Link
+                      role="menuitem"
+                      href={`/profile/${wallet.address}`}
+                      className="flex items-center gap-2.5 px-4 py-2.5 text-sm text-ice transition-colors hover:bg-white/10 hover:text-frost"
+                    >
+                      <LuUser aria-hidden className="size-4" />
+                      {t.nav.profile}
+                    </Link>
+                    <button
+                      role="menuitem"
+                      type="button"
+                      onClick={() => {
+                        setWalletMenuOpen(false);
+                        wallet.disconnect();
+                      }}
+                      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-ice transition-colors hover:bg-white/10 hover:text-frost"
+                    >
+                      <LuLogOut aria-hidden className="size-4" />
+                      {t.wallet.disconnect}
+                    </button>
+                  </div>
+                )}
+              </div>
             </>
           ) : (
             <button
