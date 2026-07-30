@@ -1,88 +1,103 @@
-# TheBingoFi — Brief untuk Tim FE/UI
+# TheBingoFi — Brief Tim UI
 
-> Dokumen orientasi: apa produk ini, mau ke mana, apa yang sudah jalan, dan persisnya apa yang perlu kalian buat. Detail teknis lanjutan ada di link tiap bagian.
+> **TL;DR: seluruh aplikasi sudah 100% fungsional dan teruji. Tugas kalian satu: bikin tampilannya sekelas game, tanpa mengubah logic.** Dokumen ini menjelaskan produknya, cara menjalankan, lalu daftar kerja per layar dengan prioritas.
 
-## 1. Produk dalam Satu Paragraf
+---
 
-**TheBingoFi = bingo strategis multiplayer, free-to-play, BUKAN judi.** Bingo klasik itu untung-untungan; di sini pemain **menyusun sendiri board-nya** dan **memanggil angka bergantian** (turn-based), jadi menang ditentukan strategi — ditambah **Skill NFT** (kartu aksi spesial, kayak bidak catur dengan gerakan khusus). Gameplay 100% web2: login → main → selesai, **nol transaksi on-chain saat match**. Wallet hanya dipakai saat beli/klaim NFT. Monetisasi murni dari platform menjual Skill & Skin NFT — "catur modern GameFi", bukan taruhan. **Tidak ada stake/pot/pool taruhan dalam bentuk apa pun.**
+## 1. Produknya Apa
 
-## 2. Goals & Konteks Bisnis
+**TheBingoFi = bingo strategis multiplayer, free-to-play, BUKAN judi.** Pemain menyusun sendiri board 5×5-nya (angka 1–25), lalu **memanggil angka bergantian** — menang = pemain pertama yang melengkapi **5 garis** (tiap garis lengkap menyalakan huruf: 1 garis = **B**, 2 = **B-I**, … 5 = **B-I-N-G-O**). Ditambah **Skill NFT** (kartu aksi spesial ala bidak catur). Gameplay 100% web2 — wallet hanya untuk beli/koleksi NFT. Tidak ada taruhan/stake dalam bentuk apa pun.
 
-- Target: program akselerator **GASOK** dari GIWA (L2 Ethereum milik Dunamu/Upbit), track **Consumer/Social**. Positioning: *"web2 gameplay, web3 ownership"*.
-- GASOK **tidak punya track GameFi** — yang dinilai adalah kemampuan menarik massive user & interaksi sosial. Karena itu **social loop = fitur kelas satu**, bukan tempelan.
-- KPI yang dikejar (tiap fitur harus menyasar minimal satu): **DAU**, **D1/D7/D30 retention** (daily challenge + quest), **K-factor** (referral + share card), **match per user per hari**, **konversi guest → wallet-linked**.
-- Free player harus tetap kompetitif: guest play tanpa wallet, mode Casual tanpa skill, skill starter pinjaman. **Reward selalu XP/kosmetik/tiket — tidak pernah uang/token.**
+Konteks bisnis singkat: dikejar buat akselerator **GASOK** (GIWA L2) track **Consumer/Social** — yang dinilai adalah daya tarik massal + social loop. KPI: DAU, retention (daily challenge + quest), K-factor (share card + profil), konversi guest→wallet. Artinya: **daily challenge share card, profil, dan market adalah layar "marketing"** — bukan pelengkap.
 
-## 3. Cara Main (yang harus dipahami sebelum desain)
+## 2. Cara Mulai Kerja (5 menit)
 
-1. **Lobby**: buat room / gabung via kode 6 karakter. 2–8 pemain. Guest cukup nickname.
-2. **Draft**: tiap pemain menyusun angka 1–25 di board 5×5 miliknya. **Board lawan rahasia** — sampai match selesai tidak pernah terlihat.
-3. **Match**: pemain **memanggil angka bergantian**. Angka terpanggil ter-mark di SEMUA board. Strategi: pilih angka yang menguntungkan board sendiri sambil menebak kebutuhan lawan.
-4. **Menang**: pemain pertama yang menyelesaikan **5 garis** (baris/kolom/diagonal; 1 garis = 5 sel ter-mark) → B-I-N-G-O.
-5. **Skill** (mode Standard/Ranked; belum ada di UI sekarang): loadout max 2 skill, umumnya 1x pakai per match. 5 skill awal: Wild Daub, Double Call, Ghost Call, Cell Swap, Nullify (counter-nya). Meta rock-paper-scissors, bukan pay-to-win.
+```bash
+git clone <repo> && cd TheBingoFi
+pnpm install
+pnpm --filter @thebingofi/server dev   # terminal 1 — API + realtime :3001
+pnpm --filter @thebingofi/web dev      # terminal 2 — web :3000
+```
 
-Aturan lengkap + skill system + ekonomi: [CONCEPT.md](CONCEPT.md).
+Lihat semua yang perlu didesain dalam 10 menit:
+1. Buka `localhost:3000` → isi nickname → **VS Bot Lv3** → mainkan sampai menang (lihat draft, board, huruf BINGO, hasil).
+2. Buka 2 tab → **Quick Match 2 pemain** di keduanya (auto-start, multiplayer real).
+3. Buka `/daily` (main + share card), `/quests`, `/market`, `/plaza`, `/profile/0xDA50Dbbb2F23ED79F20d433396f6dbcB7EF2A674`.
 
-## 4. Social Layer (pembeda utama — prioritas produk)
+## 3. Aturan Kerja (WAJIB — biar tidak bentrok dengan tim logic)
 
-- **Daily Challenge** (ala Wordle): 1 puzzle solo per hari, SAMA untuk semua pemain global (urutan panggilan deterministik dari tanggal). Susun board → diskor (kecepatan mencapai 5 garis) → **share card grid emoji** buat dibagikan → leaderboard harian → streak 3/7/30 hari. Ini mesin retensi + viral utama.
-- **Quest**: daily/weekly/seasonal ("main 3 match", "menang 1x", "selesaikan garis diagonal"...) → XP, season points, kosmetik.
-- **Nanti** (belum ada di server): friends + referral, spectator, emote in-match, club/guild, event weekend, tournament, season pass. Detail: [CONCEPT.md](CONCEPT.md) §7.
-
-## 5. Status Sekarang (yang sudah jalan beneran)
-
-| Layer | Status |
+| | |
 |---|---|
-| Game engine (board, draft, turn, menang) | ✅ pure TS, 100% tested |
-| Server realtime (Socket.IO: room/kode, draft, match, anti-cheat redaksi board) | ✅ jalan, tested |
-| HTTP API (daily challenge, leaderboard harian, quests) | ✅ jalan + CORS, tested |
-| Smart contract (Registry, Factory, Collection ERC-1155, Marketplace) | ✅ **live & verified di GIWA Sepolia**, katalog 5 skill terisi, coverage 100% |
-| Skill in-match (5 skill + Nullify window 15s) | ✅ engine + realtime + UI, tested |
-| Wallet connect (wagmi, injected) + link ke room + loadout NFT | ✅ jalan, verifikasi ownership on-chain |
-| Marketplace `/market` — **dynamic pricing on-chain** (scarcity ramp + demand decay, tier Super Rare/Rare/…) | ✅ live, quote via `priceOf` |
-| Plaza `/plaza` — chat sosial global + pamer/promosi kartu skill | ✅ jalan (in-memory) |
-| Profil publik `/profile/<address>` + share X/Telegram/copy | ✅ jalan, on-chain |
-| Metadata NFT `/metadata/{id}.json` (slot image + animation_url utk asset premium/mascot) | ✅ jalan — asset visual = porsi kalian |
-| FE lengkap (semua flow di atas, Tailwind utilitarian) | ✅ **100% fungsional — sisa polish visual = porsi kalian** |
-| Friends/club, event scheduler, persistence (DB) | ⏳ belum — jangan didesain dulu kecuali diminta |
+| ✅ **Bebas diubah** | `web/src/components/`, `web/src/app/` (halaman), `globals.css`, tambah lib UI/animasi/font |
+| ❌ **Jangan disentuh** | `web/src/lib/`, `web/src/hooks/` (logic teruji — kalian tidak perlu paham socket/wagmi), `server/`, `contracts/` |
+| 📝 **Teks** | SEMUA lewat `web/src/i18n/strings.ts` (id + en). Jangan hardcode string di komponen |
+| 🧩 **Kontrak komponen** | Komponen menerima props — ganti tampilannya sebebas apa pun, **jangan ubah nama/bentuk props**. Daftar komponen + props: [web/README.md](web/README.md) |
+| ✅ **Definition of done** | `pnpm --filter @thebingofi/web build` hijau + semua flow di §2 tetap jalan + kebaca di layar HP |
 
-## 6. Tugas Tim FE/UI — Persisnya
+## 4. Daftar Kerja per Layar (dengan prioritas)
 
-**Yang dikerjakan: percantik visual dari FE yang sudah 100% fungsional.** Semua logic (socket, state, fetch, wallet, validasi) SUDAH jadi dan teruji — kalian tidak perlu paham Socket.IO/wagmi sama sekali. Styling sekarang Tailwind utilitarian sederhana — silakan re-skin total.
+### P1 — `/play`: layar match (jantung produk)
 
-Halaman yang menunggu dipercantik (semua sudah jalan penuh):
+Yang sudah ada (fungsional, tampilan polos): 4 fase dalam satu halaman.
+- **Lobby** — daftar pemain "X/Y" (2–5), badge Publik/Privat/BOT, kode room copyable; quick match auto-start tanpa host; room Standard: tombol link wallet + loadout picker NFT.
+- **Draft** — susun board: klik 2 sel ATAU drag & drop untuk tukar, tombol acak, validasi realtime.
+- **Match** — **board sendiri = tempat memanggil angka** (klik sel yang belum ter-mark saat giliranmu; tidak ada grid picker terpisah). Huruf **B-I-N-G-O** besar di atas board + mini per pemain di tabel. Indikator giliran, deretan angka terpanggil, **panel skill** (charge, mode pilih sel Wild Daub/Cell Swap), **banner Nullify dengan countdown 15 detik**, notifikasi quest completed + riwayat skill.
+- **Result** — pemenang, tombol "Main Lagi" (mengulang mode yang sama).
 
-1. **`/` Landing** — nickname, buat room, gabung via kode, link ke daily & quests.
-2. **`/play`** — 4 fase dalam satu halaman: **Lobby** (daftar pemain, kode room copyable, tombol host; room standard: link wallet + loadout picker dari NFT yang dimiliki), **Draft** (susun board 5×5: acak + tukar sel, validasi realtime), **Match** (board dengan sel ter-mark, angka terpanggil, indikator giliran, **panel skill** + banner Nullify dengan countdown 15 detik — INI layar paling penting, kejelasan "giliran siapa & skill apa yang pending" adalah inti game feel), **Result** (pemenang + main lagi).
-3. **`/daily`** — susun board, hasil skor, **share card** (aset viral utama — bikin semenarik mungkin buat di-screenshot/dibagikan), leaderboard harian.
-4. **`/quests`** — daftar quest + progress bar.
-5. **`/market`** — katalog skill on-chain dengan **harga dinamis** (badge diskon/laris, progress stok "tersisa X dari Y", tier badge Super Rare→Common), beli NFT (wagmi), link tx explorer. Kartu skill = kanvas utama "premium feel" (referensi rasa: Pixie Chess — tiap skill karakter/mascot; slot `image`/`animation_url` sudah tersedia dari `/metadata/{id}.json`, tinggal drop asset).
-6. **`/plaza`** — chat sosial global: pesan bisa melampirkan kartu skill yang dimiliki (pamer/promosi) — desain kartu chat yang bikin orang pengen flex.
-7. **`/profile/[address]`** — showcase koleksi + tombol share (copy/X/Telegram) — halaman yang bakal di-screenshot orang, prioritas visual tinggi.
-8. Notifikasi **quest completed** + riwayat **skill resolved** yang muncul saat main.
+Desain yang dibutuhkan:
+- [ ] Sel board: bedakan dengan jelas 4 status — belum ter-mark, **bisa diklik (giliranku)**, ter-mark, target skill — plus animasi daub saat sel ter-mark (ini momen paling sering terjadi di game).
+- [ ] Momen huruf BINGO nyala (garis lengkap) = momen dopamin — kasih perayaan visual.
+- [ ] "Giliranku vs nunggu" harus kebaca <1 detik, termasuk "giliran Bot Lv7".
+- [ ] Banner Nullify = momen tegang (countdown 15s) — desain seperti "interrupt" fighting game.
+- [ ] Layar menang/kalah yang layak di-screenshot.
 
-**Aturan repo (penting, dijaga biar tidak bentrok):**
+### P1 — `/` home: pintu masuk 4 mode
 
-- ✅ Boleh diubah bebas: `web/src/components/`, `web/src/app/` (halaman), `globals.css`, tambah lib UI/animasi kalau perlu.
-- ❌ Jangan sentuh: `web/src/lib/` & `web/src/hooks/` (logic teruji), `server/`, `contracts/`.
-- Semua teks lewat `web/src/i18n/strings.ts` (id/en) — jangan hardcode string di komponen.
-- Komponen sudah dipecah per fungsi dan terima props — daftar lengkap + props + cara jalanin lokal: [web/README.md](web/README.md).
+Yang sudah ada: input nickname → 4 kartu mode: **Quick Match** (pilih 2–5 pemain), **Room Terbuka** (browser publik, refresh 10s), **Buat Room** (target pemain, casual/standard, publik/privat), **VS Bot** (grid level 1–10) + form gabung via kode.
+- [ ] Hierarki: pemain baru harus langsung paham "klik ini buat main sekarang" (Quick Match / VS Bot menonjol).
+- [ ] Grid level bot 1–10: kasih rasa "ladder" (Lv1 santai → Lv10 brutal; hint quest Lv1/3/5/7/10 berhadiah).
 
-**Di luar scope sekarang**: friends/referral, club, spectator, event — fiturnya memang belum ada di server. Jangan buat UI-nya dulu.
+### P1 — `/daily`: mesin viral
 
-## 7. Arah Rasa (bukan aturan — kalian yang pegang visual)
+Yang sudah ada: susun board → submit → skor + **share card teks** (tombol salin) → leaderboard harian.
+- [ ] **Share card = deliverable terpenting kalian di halaman ini** — desain versi visual (grid emoji/warna, nomor challenge, skor) yang bikin orang bangga posting ke X/IG story.
+- [ ] Leaderboard yang enak dilihat (top 3 menonjol).
 
-- **Web2-feel**: onboarding harus se-frictionless game casual — nickname → main dalam <30 detik. Jangan ada kesan "aplikasi crypto".
-- Bilingual **ID/EN** sejak awal (struktur string sudah ada, default id).
-- Board & giliran = jantung UX: sel ter-mark, garis yang hampir jadi, dan "giliranku/bukan" harus terbaca dalam sekejap — termasuk di layar HP.
-- Share card daily challenge = alat marketing gratis; desain grid emoji/visualnya supaya orang bangga posting.
+### P2 — `/market`: etalase premium
 
-## 8. Referensi Cepat
+Yang sudah ada: katalog on-chain, **harga dinamis** (badge "Diskon x%" / "Harga naik (laris)"), progress stok "tersisa X dari Y", **tier badge** Super Rare (supply ≤10) → Rare → Uncommon → Common, beli via wallet + link tx, slot `image`/`animation_url` per skill (fallback inisial).
+- [ ] **Kartu skill = kanvas premium** (referensi rasa: **Pixie Chess**) — tiap skill diperlakukan sebagai karakter/mascot: ilustrasi, frame per tier, makin rare makin "hidup" (static → animated). Asset final kalian yang buat; sistem tinggal terima file (drop ke slot metadata — tanpa ubah kode/kontrak).
+- [ ] Super Rare (Nullify, 10 unit @0.01 ETH) harus terasa mahal & langka.
+
+### P2 — `/plaza` + `/profile/[address]`: layar sosial
+
+Yang sudah ada: chat global realtime (pesan bisa **melampirkan kartu skill** yang dimiliki — pamer/promosi; klik kartu → market), profil publik koleksi on-chain + tombol share copy/X/Telegram.
+- [ ] Kartu skill di chat harus menonjol dari teks (ini fitur flex).
+- [ ] Profil = halaman yang di-share keluar — layout showcase yang pantas jadi "kartu nama" pemain.
+
+### P3 — `/quests`, header/nav, states
+
+- [ ] Quest list + progress bar (termasuk 5 quest bot ladder window "season").
+- [ ] Nav konsisten, wallet connect state, language switcher id/en.
+- [ ] Loading/empty/error state seragam (sekarang ada tapi seadanya).
+
+## 5. Arah Rasa (panduan, bukan aturan)
+
+- **Web2 game-feel** — onboarding nickname → main <30 detik; jangan berasa "aplikasi crypto". Wallet muncul hanya di market/profil/standard room.
+- **Mobile dulu** — board 5×5 dan semua aksi harus nyaman satu jempol.
+- **Juicy tapi jelas** — animasi boleh rame di momen (daub, huruf BINGO, menang), tapi status permainan harus selalu terbaca sekejap.
+- Bilingual id/en sudah tersedia — desain jangan bergantung panjang teks satu bahasa.
+
+## 6. Yang JANGAN Didesain Dulu (belum ada di server)
+
+Friends/referral, club/guild, spectator, emote in-match, event weekend/tournament, season pass, marketplace P2P antar-user. Nanti ada brief susulan.
+
+## 7. Referensi
 
 | Butuh apa | Lihat |
 |---|---|
-| Konsep & game design lengkap | [CONCEPT.md](CONCEPT.md) |
-| Arsitektur full-stack + kontrak live | [README.md](README.md) |
-| Cara jalanin + daftar komponen & props | [web/README.md](web/README.md) |
-| Kontrak API server (event + endpoint) | [server/API.md](server/API.md) |
-| Detail smart contract + diagram alur | [contracts/README.md](contracts/README.md) |
+| Cara jalanin + **daftar komponen & props** | [web/README.md](web/README.md) |
+| Konsep & game design lengkap (rules, skill, ekonomi, social) | [CONCEPT.md](CONCEPT.md) |
+| Arsitektur + kontrak live GIWA Sepolia | [README.md](README.md) |
+| API server (kalau penasaran — tidak wajib) | [server/API.md](server/API.md) |
+| Status teknis: 217 test server, 52 test kontrak (coverage 100%), build hijau | — |
