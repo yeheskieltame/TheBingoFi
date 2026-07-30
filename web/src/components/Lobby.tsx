@@ -70,29 +70,29 @@ export default function Lobby({
   }
 
   return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-semibold">{t.lobby.title}</h2>
+    <section className="space-y-4 rounded-3xl border border-white/10 bg-night/55 p-4 backdrop-blur-md sm:p-6">
+      <h2 className="text-center font-display text-xl font-bold text-frost">{t.lobby.title}</h2>
 
-      <div className="flex flex-wrap items-center gap-3 rounded border border-slate-800 bg-slate-900/60 p-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-night/50 p-3">
         <dl className="flex items-baseline gap-2">
-          <dt className="text-xs uppercase text-slate-400">{t.roomCodeLabel}</dt>
-          <dd className="font-mono text-xl font-bold tracking-widest text-white">{code}</dd>
+          <dt className="text-xs uppercase tracking-wide text-ice/45">{t.roomCodeLabel}</dt>
+          <dd className="font-mono text-2xl font-bold tracking-[0.3em] text-frost">{code}</dd>
         </dl>
         <button
           type="button"
           onClick={handleCopyCode}
-          className="rounded border border-slate-700 px-2 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+          className="rounded-full border border-white/15 px-3 py-1 font-display text-xs font-semibold text-ice transition-colors hover:border-white/35 hover:text-frost"
         >
           {copied ? t.lobby.roomCodeCopied : t.lobby.roomCodeCopy}
         </button>
-        <span className="ml-auto rounded-full border border-slate-700 px-2.5 py-1 text-xs font-semibold text-slate-300">
+        <span className="ml-auto rounded-full border border-white/15 px-3 py-1 font-display text-xs font-bold text-frost">
           {players.length}/{maxPlayers} {t.lobby.playersSuffix}
         </span>
         <span
           className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
             visibility === "public"
-              ? "border-emerald-600 text-emerald-300"
-              : "border-slate-600 text-slate-400"
+              ? "border-glacier/60 bg-glacier/15 text-frost"
+              : "border-white/15 text-ice/60"
           }`}
         >
           {visibility === "public" ? t.lobby.visibilityPublic : t.lobby.visibilityPrivate}
@@ -102,9 +102,9 @@ export default function Lobby({
       <PlayerList players={players} hostId={hostId} mode={mode} />
 
       {mode === "standard" && (
-        <section className="space-y-3 rounded border border-slate-800 p-3">
-          <h3 className="text-sm font-semibold text-slate-200">{t.lobby.loadoutTitle}</h3>
-          <p className="text-sm text-slate-300">
+        <section className="space-y-3 rounded-2xl border border-white/10 bg-night/40 p-3">
+          <h3 className="font-display text-sm font-bold text-frost">{t.lobby.loadoutTitle}</h3>
+          <p className="text-sm text-ice/70">
             {t.lobby.walletLabel}: <span className="font-mono">{me?.wallet ?? t.lobby.walletNotLinked}</span>
           </p>
 
@@ -115,30 +115,30 @@ export default function Lobby({
                   type="button"
                   onClick={onLinkWallet}
                   disabled={walletLinkPending}
-                  className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-full bg-glacier-deep px-5 py-2 font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   {walletLinkPending
                     ? t.lobby.linkWalletPending
                     : `${t.lobby.linkWallet} (${truncateAddress(connectedWalletAddress)})`}
                 </button>
               ) : (
-                <p className="text-xs text-amber-400">{t.lobby.connectFirst}</p>
+                <p className="text-xs text-amber-200">{t.lobby.connectFirst}</p>
               )}
             </div>
           )}
 
           {me?.wallet && (
             <>
-              <p className="text-xs text-emerald-400">{t.lobby.walletLinked}</p>
+              <p className="text-xs text-frost/70">✓ {t.lobby.walletLinked}</p>
               {loadoutPicker}
             </>
           )}
 
-          <p className="text-xs text-slate-400">{t.lobby.loadoutNote}</p>
+          <p className="text-xs text-ice/50">{t.lobby.loadoutNote}</p>
 
           <div>
-            <h4 className="text-xs font-semibold uppercase text-slate-400">{t.lobby.loadoutPlayersTitle}</h4>
-            <ul className="mt-1 space-y-1 text-xs text-slate-300">
+            <h4 className="text-xs uppercase tracking-wide text-ice/45">{t.lobby.loadoutPlayersTitle}</h4>
+            <ul className="mt-1 space-y-1 text-xs text-ice/70">
               {players.map((player) => (
                 <li key={player.playerId}>
                   {player.wallet ? (
@@ -158,8 +158,8 @@ export default function Lobby({
       )}
 
       {isQuickMatch ? (
-        <p className="rounded border border-indigo-800 bg-indigo-950/40 px-3 py-2 text-sm text-indigo-300">
-          {t.lobby.waitingForPlayers} {players.length}/{maxPlayers} — {t.lobby.autoStartNote}
+        <p className="rounded-2xl border border-glacier/40 bg-glacier/15 px-4 py-2.5 text-center text-sm text-frost/85">
+          {t.lobby.waitingForPlayers} {players.length}/{maxPlayers} · {t.lobby.autoStartNote}
         </p>
       ) : (
         isHost && (
@@ -168,11 +168,11 @@ export default function Lobby({
               type="button"
               onClick={onStartDraft}
               disabled={pending || !canStart}
-              className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-full bg-glacier-deep px-8 py-2.5 font-display text-base font-bold text-frost shadow-lg shadow-glacier-deep/40 transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
             >
               {t.lobby.startDraft}
             </button>
-            {!canStart && <p className="text-xs text-amber-400">{t.lobby.needMorePlayers}</p>}
+            {!canStart && <p className="text-center text-xs text-amber-200">{t.lobby.needMorePlayers}</p>}
           </div>
         )
       )}
@@ -180,7 +180,7 @@ export default function Lobby({
       <button
         type="button"
         onClick={onLeave}
-        className="rounded border border-slate-700 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
+        className="mx-auto block rounded-full border border-white/15 px-5 py-1.5 font-display text-sm font-semibold text-ice/70 transition-colors hover:border-white/35 hover:text-frost"
       >
         {t.leaveRoom}
       </button>

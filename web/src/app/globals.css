@@ -35,3 +35,46 @@
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-baloo);
 }
+
+/*
+ * Tailwind v4 menghapus `cursor: pointer` bawaan dari tombol (preflight-nya
+ * ikut default browser: `cursor: default`). Dikembalikan di sini sekali untuk
+ * semua elemen yang memang bisa diklik, daripada menempel `cursor-pointer` di
+ * tiap tombol. Yang disabled tetap `not-allowed` supaya statusnya kebaca.
+ */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+[role="radio"]:not(:disabled),
+label:has(> input[type="radio"]:not(:disabled)),
+summary {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/*
+ * Denyut glow untuk banner Nullify (window 15 detik) - momen "interrupt" yang
+ * harus menarik mata tanpa mengedipkan teksnya seperti `animate-pulse` bawaan.
+ */
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 26px -6px rgba(251, 191, 36, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 44px 0 rgba(251, 191, 36, 0.65);
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-glow 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-slow {
+    animation: none;
+  }
+}

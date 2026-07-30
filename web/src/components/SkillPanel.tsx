@@ -90,17 +90,17 @@ export default function SkillPanel({
   const skillsDisabled = pending || !isMyTurn || view.pendingSkill !== undefined || selection !== null;
 
   return (
-    <section className="space-y-3 rounded border border-slate-800 bg-slate-900/60 p-3">
-      <h2 className="text-lg font-semibold">{t.title}</h2>
+    <section className="space-y-3 rounded-3xl border border-white/10 bg-night/55 p-4 backdrop-blur-md">
+      <h2 className="font-display text-lg font-bold text-frost">{t.title}</h2>
 
       {loadout.length > 0 && (
         <fieldset disabled={skillsDisabled}>
-          <legend className="mb-1 text-sm font-semibold text-slate-300">{t.yourSkills}</legend>
+          <legend className="mb-2 text-xs uppercase tracking-wide text-ice/45">{t.yourSkills}</legend>
           <ul className="flex flex-wrap gap-2">
             {loadout.map((instance, index) => (
               <li
                 key={`${instance.effectType}-${index}`}
-                className="flex items-center gap-2 rounded border border-slate-700 bg-slate-800 px-2 py-1 text-sm"
+                className="flex items-center gap-2 rounded-full border border-white/12 bg-white/6 py-1 pl-3 pr-1 text-sm text-frost/85"
               >
                 <span>
                   {t.effectNames[instance.effectType] ?? instance.effectType} ({instance.chargesLeft} {t.chargesLeft}
@@ -110,7 +110,7 @@ export default function SkillPanel({
                   type="button"
                   onClick={() => onActivateSkill(instance.effectType)}
                   disabled={instance.chargesLeft <= 0}
-                  className="rounded bg-indigo-600 px-2 py-0.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-full bg-glacier-deep px-3 py-1 font-display text-xs font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   {t.use}
                 </button>
@@ -121,13 +121,13 @@ export default function SkillPanel({
       )}
 
       {selection && (
-        <p className="flex items-center gap-2 rounded bg-amber-600/20 px-2 py-1 text-sm text-amber-300">
+        <p className="flex flex-wrap items-center gap-2 rounded-2xl border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-200">
           {t.selectPrompt[selection.effectType] ?? selection.effectType} ({selection.cells.length}/
           {selection.cellsNeeded})
           <button
             type="button"
             onClick={onCancelSelection}
-            className="rounded border border-amber-500 px-2 py-0.5 text-xs font-semibold hover:bg-amber-600/30"
+            className="rounded-full border border-amber-300/60 px-3 py-0.5 font-display text-xs font-semibold hover:bg-amber-500/25"
           >
             {t.cancelSelection}
           </button>
@@ -135,29 +135,33 @@ export default function SkillPanel({
       )}
 
       {view.myTurnArmed?.double && (
-        <p className="rounded bg-indigo-600/20 px-2 py-1 text-sm text-indigo-300">
+        <p className="rounded-2xl border border-glacier/40 bg-glacier/15 px-3 py-2 text-sm text-frost/85">
           {t.armedDoublePrefix}
           {view.myTurnArmed.double.callsLeft}
           {t.armedDoubleSuffix}
         </p>
       )}
       {view.myTurnArmed?.ghost && (
-        <p className="rounded bg-indigo-600/20 px-2 py-1 text-sm text-indigo-300">{t.armedGhost}</p>
+        <p className="rounded-2xl border border-glacier/40 bg-glacier/15 px-3 py-2 text-sm text-frost/85">{t.armedGhost}</p>
       )}
 
       {view.pendingSkill && (
-        <div role="alert" className="space-y-2 rounded border border-amber-500 bg-amber-600/10 p-2">
-          <p className="text-sm text-amber-300">
+        <div role="alert" className="animate-pulse-slow space-y-3 rounded-2xl border-2 border-amber-400/70 bg-amber-500/15 p-4 text-center shadow-[0_0_30px_-5px_rgba(251,191,36,0.45)]">
+          <p className="font-display text-base font-bold text-amber-200">
             {t.pendingLabel}: {t.effectNames[view.pendingSkill.effectType] ?? view.pendingSkill.effectType}
-            {secondsLeft !== null && <span className="ml-2 font-mono font-bold">{secondsLeft}s</span>}
+            {secondsLeft !== null && (
+              <span className="ml-2 inline-flex size-8 items-center justify-center rounded-full bg-amber-400 font-display text-sm font-bold text-glacier-ink">
+                {secondsLeft}
+              </span>
+            )}
           </p>
           {iAmAwaiting && (
-            <div className="flex gap-2">
+            <div className="flex justify-center gap-2">
               <button
                 type="button"
                 onClick={onNullify}
                 disabled={pending}
-                className="rounded bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-full bg-red-500 px-6 py-2 font-display text-sm font-bold text-white shadow-lg shadow-red-500/30 transition-colors hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {t.nullify}
               </button>
@@ -165,7 +169,7 @@ export default function SkillPanel({
                 type="button"
                 onClick={onPass}
                 disabled={pending}
-                className="rounded border border-slate-600 px-3 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-full border border-white/25 px-6 py-2 font-display text-sm font-semibold text-ice transition-colors hover:border-white/45 hover:text-frost disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {t.pass}
               </button>
@@ -176,11 +180,11 @@ export default function SkillPanel({
 
       {resolutions.length > 0 && (
         <div>
-          <h3 className="mb-1 text-sm font-semibold text-slate-300">{t.historyTitle}</h3>
-          <ul className="space-y-0.5 text-xs text-slate-400">
+          <h3 className="mb-1 text-xs uppercase tracking-wide text-ice/45">{t.historyTitle}</h3>
+          <ul className="space-y-0.5 text-xs text-ice/55">
             {resolutions.map((resolution, index) => (
               <li key={index}>
-                {t.effectNames[resolution.effectType] ?? resolution.effectType} —{" "}
+                {t.effectNames[resolution.effectType] ?? resolution.effectType} ·{" "}
                 {resolution.nullified ? t.wasNullified : t.wasResolved}
               </li>
             ))}

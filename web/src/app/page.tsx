@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import ModeDialog from "@/components/ModeDialog";
 import { useLocale } from "@/hooks/useLocale";
 import { useRoom } from "@/hooks/useRoom";
 import { strings } from "@/i18n/strings";
@@ -18,6 +19,20 @@ const PLAYER_COUNTS = Array.from({ length: MAX_PLAYERS - MIN_PLAYERS + 1 }, (_, 
 const BOT_LEVELS = Array.from({ length: 10 }, (_, i) => i + 1);
 /** Room Browser auto-refresh interval (manual refresh button always available too). */
 const ROOM_LIST_POLL_MS = 10_000;
+
+/**
+ * Kartu mode: art bergaya "mode select" (lihat public/images/card). Judul mode
+ * sudah tercetak DI dalam art, jadi label i18n di sini hanya dipakai untuk
+ * alt/aria dan judul panel opsi di bawahnya - tidak dirender dua kali.
+ */
+const MODE_CARDS = [
+  { id: "quick", image: "/images/card/vs-player.png", labelKey: "quickMatch" },
+  { id: "bot", image: "/images/card/vs-bot.png", labelKey: "vsBot" },
+  { id: "create", image: "/images/card/create-room.png", labelKey: "createRoom" },
+  { id: "open", image: "/images/card/open-room.png", labelKey: "roomBrowser" },
+] as const;
+
+type ModeId = (typeof MODE_CARDS)[number]["id"];
 
 /** Link sekunder di kaki halaman - konten murni presentasional, jadi ikut di file ini. */
 const FOOTER_LINKS = [
@@ -53,6 +68,15 @@ export default function Home() {
   const hasNickname = trimmedNickname.length > 0;
 
   const [joinCode, setJoinCode] = useState("");
+
+  /** Mode yang modal opsinya sedang terbuka; null = belum ada kartu diklik.
+   *  Opsi tampil sebagai modal (bukan inline di bawah) supaya deretan kartu
+   *  tetap jadi fokus dan halaman tidak melompat panjang saat memilih. */
+  const [openMode, setOpenMode] = useState<ModeId | null>(null);
+  /** Quick Match & VS Bot sekarang dua langkah (pilih dulu, PLAY kemudian) supaya
+   *  tombol aksi utamanya tunggal dan besar, bukan 10 tombol yang semuanya "start". */
+  const [quickSize, setQuickSize] = useState<number>(MIN_PLAYERS);
+  const [botLevel, setBotLevel] = useState<number>(3);
 
   const [createSize, setCreateSize] = useState<number>(MAX_PLAYERS);
   const [createMode, setCreateMode] = useState<"casual" | "standard">("casual");
@@ -133,29 +157,31 @@ export default function Home() {
 
 
   return (
-    <main className="mx-auto max-w-4xl space-y-6 py-4">
-      {/* Hero: art salju + identitas + nickname (satu-satunya input yang wajib
-          diisi sebelum semua jalur masuk match di bawah aktif). */}
-      <section className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
+    <main className="mx-auto flex min-h-[calc(100vh-9rem)] max-w-5xl flex-col justify-center gap-5 py-4">
+      {/* Latar art untuk SELURUH halaman: fixed di belakang konten, di-anchor ke
+          atas supaya langit jadi panggung hero dan lerengnya turun ke area kartu.
+          Gradient menutup dari transparan (atas) ke night pekat (bawah) supaya
+          hero dan kartu-kartu mode terbaca sebagai satu bidang, bukan dua blok. */}
+      <div aria-hidden className="fixed inset-0 -z-10">
         <Image
           src="/images/background/bg.png"
           alt=""
           fill
           priority
           sizes="100vw"
-          className="scale-105 object-cover object-center"
+          className="object-cover object-top"
         />
-        <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-night/35 via-night/25 to-night/85" />
+        <div className="absolute inset-0 bg-gradient-to-b from-night/25 via-night/70 to-night" />
+      </div>
 
-        <div className="relative flex flex-col items-center gap-5 px-5 py-14 text-center sm:py-20">
-          <div className="space-y-2">
-            <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-frost sm:text-5xl">
-              {t.heroTitle}
-            </h1>
-            <p className="font-display text-base font-medium text-frost/70 sm:text-lg">{t.heroSubtitle}</p>
-          </div>
+      <section className="relative">
+        <div className="relative flex flex-col items-center gap-2.5 px-5 py-6 text-center">
+          <h1 className="font-display text-xl font-bold leading-tight tracking-tight text-frost sm:text-2xl">
+            {t.heroTitle}
+          </h1>
+          <p className="text-xs text-frost/60">{t.heroSubtitle}</p>
 
-          <div className="w-full max-w-sm space-y-1.5">
+          <div className="w-full max-w-[16rem] space-y-1">
             <label htmlFor="nickname" className="sr-only">
               {t.nicknameLabel}
             </label>
@@ -165,85 +191,82 @@ export default function Home() {
               value={nickname}
               onChange={(event) => handleNicknameChange(event.target.value)}
               placeholder={t.nicknamePlaceholder}
-              className="w-full rounded-full bg-frost/95 px-5 py-2.5 text-center font-display font-medium text-glacier-ink placeholder:text-glacier-deep/40 focus:outline-none focus:ring-2 focus:ring-frost"
+              className="w-full rounded-full bg-frost/95 px-4 py-1.5 text-center font-display text-sm font-medium text-glacier-ink placeholder:text-glacier-deep/40 focus:outline-none focus:ring-2 focus:ring-frost"
             />
-            {!hasNickname && <p className="text-xs text-amber-200">{t.nicknameRequiredHint}</p>}
+            {!hasNickname && <p className="text-[0.7rem] text-amber-200/90">{t.nicknameRequiredHint}</p>}
           </div>
         </div>
       </section>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {/* 1. Quick Match (VS Player) */}
-        <section className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div>
-            <h2 className="font-display text-base font-bold text-frost">{t.quickMatch.title}</h2>
-            <p className="text-xs text-ice/55">{t.quickMatch.desc}</p>
-          </div>
-          <div className="space-y-1.5">
-            <p className="text-xs uppercase tracking-wide text-ice/45">{t.quickMatch.sizeLabel}</p>
-            <div className="flex flex-wrap gap-2">
-              {PLAYER_COUNTS.map((size) => (
-                <button
-                  key={size}
-                  type="button"
-                  disabled={!hasNickname}
-                  onClick={() => handleQuickMatch(size)}
-                  className="size-9 rounded-full bg-glacier-deep font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
+      {/* Pemilih mode ala layar "mode select" game: kartu art besar dipilih dulu,
+          opsinya muncul di panel bawah, lalu SATU tombol aksi utama. */}
+      <section
+        aria-label={t.modePickerLabel}
+        className="flex items-center justify-center gap-2 px-1 sm:gap-4"
+      >
+        {MODE_CARDS.map((card) => {
+          const active = openMode === card.id;
+          // Redup HANYA saat modal mode lain terbuka. Tanpa modal, keempat kartu
+          // tampil penuh - sebelumnya semuanya abu-abu selama belum ada yang dipilih.
+          const dimmed = openMode !== null && !active;
+          const label = t[card.labelKey].title;
+          return (
+            <button
+              key={card.id}
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded={active}
+              onClick={() => setOpenMode(card.id)}
+              className={`group relative aspect-[300/520] w-[clamp(7.5rem,23vw,15rem)] shrink-0 transition-all duration-300 ${
+                active
+                  ? "z-10 scale-105 drop-shadow-[0_0_32px_rgba(120,190,255,0.6)]"
+                  : dimmed
+                    ? "scale-95 opacity-40 grayscale-[55%]"
+                    : "hover:-translate-y-1.5 hover:scale-[1.04] hover:drop-shadow-[0_0_26px_rgba(120,190,255,0.45)]"
+              }`}
+            >
+              <Image
+                src={card.image}
+                alt={label}
+                fill
+                sizes="(max-width: 640px) 30vw, 240px"
+                className="object-contain"
+              />
+              {active && (
+                <span
+                  aria-hidden
+                  className="absolute -top-1 right-0 grid size-5 place-items-center rounded-full bg-frost font-display text-[0.6rem] font-bold text-glacier-ink shadow-lg"
                 >
-                  {size}
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
+                  ✓
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </section>
 
-        {/* 4. VS Bot */}
-        <section className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div>
-            <h2 className="font-display text-base font-bold text-frost">{t.vsBot.title}</h2>
-            <p className="text-xs text-ice/55">{t.vsBot.desc}</p>
-          </div>
-          <div className="space-y-1.5">
-            <p className="text-xs uppercase tracking-wide text-ice/45">{t.vsBot.levelLabel}</p>
-            <div className="grid grid-cols-5 gap-1.5">
-              {BOT_LEVELS.map((level) => (
-                <button
-                  key={level}
-                  type="button"
-                  disabled={!hasNickname}
-                  onClick={() => handleVsBot(level)}
-                  className="rounded-xl border border-white/15 py-1.5 font-display text-sm font-bold text-ice transition-colors hover:border-white/35 hover:text-frost disabled:cursor-not-allowed disabled:opacity-30"
-                >
-                  {level}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-ice/45">{t.vsBot.levelHint}</p>
-            <p className="text-xs text-ice/45">{t.vsBot.questHint}</p>
-          </div>
-        </section>
-
-        {/* 3. Buat Room (manual create) */}
-        <form onSubmit={handleCreateRoom} className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div>
-            <h2 className="font-display text-base font-bold text-frost">{t.createRoom.title}</h2>
-            <p className="text-xs text-ice/55">{t.createRoom.desc}</p>
-          </div>
-
-          <fieldset className="space-y-1.5">
-            <legend className="text-xs uppercase tracking-wide text-ice/45">
-              {t.createRoom.targetPlayersLabel}
+      {/* Opsi tiap mode: modal (motion), muncul saat kartunya diklik. */}
+      <ModeDialog
+        open={openMode === "quick"}
+        title={t.quickMatch.title}
+        description={t.quickMatch.desc}
+        onClose={() => setOpenMode(null)}
+      >
+        <div className="space-y-5">
+          <fieldset>
+            <legend className="mb-2 w-full text-center text-xs uppercase tracking-wide text-ice/45">
+              {t.quickMatch.sizeLabel}
             </legend>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex justify-center gap-2">
               {PLAYER_COUNTS.map((size) => (
                 <button
                   key={size}
                   type="button"
-                  aria-pressed={createSize === size}
-                  onClick={() => setCreateSize(size)}
-                  className={`size-9 rounded-full font-display text-sm font-bold transition-colors ${
-                    createSize === size
-                      ? "bg-frost text-glacier-ink"
+                  aria-pressed={quickSize === size}
+                  onClick={() => setQuickSize(size)}
+                  className={`size-11 rounded-full font-display text-base font-bold transition-all ${
+                    quickSize === size
+                      ? "bg-frost text-glacier-ink shadow-lg shadow-frost/20"
                       : "border border-white/15 text-ice hover:border-white/35 hover:text-frost"
                   }`}
                 >
@@ -253,93 +276,192 @@ export default function Home() {
             </div>
           </fieldset>
 
-          <fieldset className="space-y-1">
-            <legend className="text-xs uppercase tracking-wide text-ice/45">{t.createRoom.modeLabel}</legend>
-            <label className="flex items-center gap-2 text-sm text-frost/80">
-              <input
-                type="radio"
-                name="createMode"
-                checked={createMode === "casual"}
-                onChange={() => setCreateMode("casual")}
-                className="accent-glacier"
-              />
-              {t.createRoom.modeCasual}
-            </label>
-            <label className="flex items-center gap-2 text-sm text-frost/80">
-              <input
-                type="radio"
-                name="createMode"
-                checked={createMode === "standard"}
-                onChange={() => setCreateMode("standard")}
-                className="accent-glacier"
-              />
-              {t.createRoom.modeStandard}
-            </label>
-            {createMode === "standard" && <p className="text-xs text-amber-200">{t.createRoom.modeStandardHint}</p>}
+          <button
+            type="button"
+            disabled={!hasNickname}
+            onClick={() => handleQuickMatch(quickSize)}
+            className="w-full rounded-full bg-glacier-deep py-3 font-display text-lg font-bold uppercase tracking-wide text-frost shadow-lg shadow-glacier-deep/40 transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            {t.playNow}
+          </button>
+        </div>
+      </ModeDialog>
+
+      <ModeDialog
+        open={openMode === "bot"}
+        title={t.vsBot.title}
+        description={t.vsBot.desc}
+        onClose={() => setOpenMode(null)}
+      >
+        <div className="space-y-5">
+          <fieldset className="space-y-2">
+            <legend className="mb-2 w-full text-center text-xs uppercase tracking-wide text-ice/45">
+              {t.vsBot.levelLabel}
+            </legend>
+            {/* Tangga kesulitan: makin tinggi level makin "panas" latarnya. */}
+            <div className="grid grid-cols-5 gap-1.5">
+              {BOT_LEVELS.map((level) => (
+                <button
+                  key={level}
+                  type="button"
+                  aria-pressed={botLevel === level}
+                  onClick={() => setBotLevel(level)}
+                  className={`relative rounded-xl py-2.5 font-display text-sm font-bold transition-all ${
+                    botLevel === level
+                      ? "-translate-y-0.5 bg-frost text-glacier-ink shadow-lg shadow-frost/20"
+                      : "border border-white/15 text-ice hover:border-white/35 hover:text-frost"
+                  }`}
+                  style={
+                    botLevel === level
+                      ? undefined
+                      : { backgroundColor: `rgba(${120 + level * 10}, ${90 - level * 6}, ${60 - level * 4}, ${0.05 + level * 0.03})` }
+                  }
+                >
+                  {level}
+                  {[1, 3, 5, 7, 10].includes(level) && (
+                    <span aria-hidden className="absolute right-1 top-0.5 text-[0.6rem] text-amber-300">
+                      ★
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+            <p className="text-center text-xs text-ice/45">{t.vsBot.levelHint}</p>
+            <p className="text-center text-xs text-ice/45">★ {t.vsBot.questHint}</p>
           </fieldset>
 
-          <fieldset className="space-y-1">
-            <legend className="text-xs uppercase tracking-wide text-ice/45">{t.createRoom.visibilityLabel}</legend>
-            <label className="flex items-center gap-2 text-sm text-frost/80">
-              <input
-                type="radio"
-                name="createVisibility"
-                checked={!createPublic}
-                onChange={() => setCreatePublic(false)}
-                className="accent-glacier"
-              />
-              {t.createRoom.visibilityPrivate}
-            </label>
-            <label className="flex items-center gap-2 text-sm text-frost/80">
-              <input
-                type="radio"
-                name="createVisibility"
-                checked={createPublic}
-                onChange={() => setCreatePublic(true)}
-                className="accent-glacier"
-              />
-              {t.createRoom.visibilityPublic}
-            </label>
+          <button
+            type="button"
+            disabled={!hasNickname}
+            onClick={() => handleVsBot(botLevel)}
+            className="w-full rounded-full bg-glacier-deep py-3 font-display text-lg font-bold uppercase tracking-wide text-frost shadow-lg shadow-glacier-deep/40 transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            {t.playNow}
+          </button>
+        </div>
+      </ModeDialog>
+
+      <ModeDialog
+        open={openMode === "create"}
+        title={t.createRoom.title}
+        description={t.createRoom.desc}
+        onClose={() => setOpenMode(null)}
+      >
+        <form onSubmit={handleCreateRoom} className="space-y-5">
+          <fieldset>
+            <legend className="mb-2 w-full text-center text-xs uppercase tracking-wide text-ice/45">
+              {t.createRoom.targetPlayersLabel}
+            </legend>
+            <div className="flex justify-center gap-2">
+              {PLAYER_COUNTS.map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  aria-pressed={createSize === size}
+                  onClick={() => setCreateSize(size)}
+                  className={`size-11 rounded-full font-display text-base font-bold transition-all ${
+                    createSize === size
+                      ? "bg-frost text-glacier-ink shadow-lg shadow-frost/20"
+                      : "border border-white/15 text-ice hover:border-white/35 hover:text-frost"
+                  }`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
           </fieldset>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <fieldset className="space-y-1">
+              <legend className="text-xs uppercase tracking-wide text-ice/45">{t.createRoom.modeLabel}</legend>
+              <label className="flex items-center gap-2 text-sm text-frost/80">
+                <input
+                  type="radio"
+                  name="createMode"
+                  checked={createMode === "casual"}
+                  onChange={() => setCreateMode("casual")}
+                  className="accent-glacier"
+                />
+                {t.createRoom.modeCasual}
+              </label>
+              <label className="flex items-center gap-2 text-sm text-frost/80">
+                <input
+                  type="radio"
+                  name="createMode"
+                  checked={createMode === "standard"}
+                  onChange={() => setCreateMode("standard")}
+                  className="accent-glacier"
+                />
+                {t.createRoom.modeStandard}
+              </label>
+              {createMode === "standard" && <p className="text-xs text-amber-200">{t.createRoom.modeStandardHint}</p>}
+            </fieldset>
+
+            <fieldset className="space-y-1">
+              <legend className="text-xs uppercase tracking-wide text-ice/45">{t.createRoom.visibilityLabel}</legend>
+              <label className="flex items-center gap-2 text-sm text-frost/80">
+                <input
+                  type="radio"
+                  name="createVisibility"
+                  checked={!createPublic}
+                  onChange={() => setCreatePublic(false)}
+                  className="accent-glacier"
+                />
+                {t.createRoom.visibilityPrivate}
+              </label>
+              <label className="flex items-center gap-2 text-sm text-frost/80">
+                <input
+                  type="radio"
+                  name="createVisibility"
+                  checked={createPublic}
+                  onChange={() => setCreatePublic(true)}
+                  className="accent-glacier"
+                />
+                {t.createRoom.visibilityPublic}
+              </label>
+            </fieldset>
+          </div>
 
           <button
             type="submit"
             disabled={!hasNickname}
-            className="w-full rounded-full bg-glacier-deep px-4 py-2 font-display font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
+            className="w-full rounded-full bg-glacier-deep py-3 font-display text-lg font-bold uppercase tracking-wide text-frost shadow-lg shadow-glacier-deep/40 transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
           >
             {t.createRoom.submit}
           </button>
         </form>
+      </ModeDialog>
 
-        {/* 2. Room Terbuka (Room Browser) */}
-        <section className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <h2 className="font-display text-base font-bold text-frost">{t.roomBrowser.title}</h2>
-              <p className="text-xs text-ice/55">{t.roomBrowser.desc}</p>
-            </div>
+      <ModeDialog
+        open={openMode === "open"}
+        title={t.roomBrowser.title}
+        description={t.roomBrowser.desc}
+        onClose={() => setOpenMode(null)}
+      >
+        <div className="space-y-3">
+          <div className="flex justify-center">
             <button
               type="button"
               onClick={handleRefreshRooms}
               disabled={roomsLoading}
-              className="shrink-0 rounded-full border border-white/15 px-3 py-1 font-display text-xs font-semibold text-ice transition-colors hover:border-white/35 hover:text-frost disabled:opacity-40"
+              className="rounded-full border border-white/15 px-4 py-1 font-display text-xs font-semibold text-ice transition-colors hover:border-white/35 hover:text-frost disabled:opacity-40"
             >
               {t.roomBrowser.refresh}
             </button>
           </div>
 
-          {roomsError && <p className="text-xs text-red-300">{t.roomBrowser.error}</p>}
-          {!roomsError && rooms === null && <p className="text-xs text-ice/45">{t.roomBrowser.loading}</p>}
+          {roomsError && <p className="text-center text-xs text-red-300">{t.roomBrowser.error}</p>}
+          {!roomsError && rooms === null && <p className="text-center text-xs text-ice/45">{t.roomBrowser.loading}</p>}
           {!roomsError && rooms !== null && rooms.length === 0 && (
-            <p className="text-xs text-ice/45">{t.roomBrowser.empty}</p>
+            <p className="text-center text-xs text-ice/45">{t.roomBrowser.empty}</p>
           )}
 
           {rooms && rooms.length > 0 && (
-            <ul className="space-y-1.5">
+            <ul className="max-h-72 space-y-1.5 overflow-y-auto">
               {rooms.map((r) => (
                 <li
                   key={r.code}
-                  className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-night/50 px-3 py-2 text-sm"
+                  className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-night/60 px-3 py-2 text-sm"
                 >
                   <div>
                     <p className="font-display font-bold text-frost">{r.hostNickname}</p>
@@ -360,8 +482,8 @@ export default function Home() {
               ))}
             </ul>
           )}
-        </section>
-      </div>
+        </div>
+      </ModeDialog>
 
       {/* Gabung via kode: baris tipis, tanpa kartu. */}
       <form onSubmit={handleJoinByCode} className="mx-auto flex max-w-md items-center gap-2">
@@ -375,7 +497,7 @@ export default function Home() {
           onChange={(event) => setJoinCode(event.target.value)}
           placeholder="ABC123"
           aria-label={t.joinCodeLabel}
-          className="min-w-0 flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-2 font-mono text-sm uppercase tracking-widest text-frost placeholder:tracking-normal placeholder:text-ice/30 focus:border-white/30 focus:outline-none"
+          className="min-w-0 flex-1 rounded-full border border-white/15 bg-night/50 px-4 py-2 font-mono backdrop-blur-md text-sm uppercase tracking-widest text-frost placeholder:tracking-normal placeholder:text-ice/30 focus:border-white/30 focus:outline-none"
         />
         <button
           type="submit"

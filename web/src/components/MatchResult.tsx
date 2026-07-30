@@ -27,17 +27,19 @@ export default function MatchResult({ winnerId, reason, players, onBackToLanding
   const reasonKey = reason ? REASON_KEY[reason] : undefined;
 
   return (
-    <section className="space-y-4 rounded border border-slate-800 bg-slate-900/60 p-4 text-center">
-      <h2 className="text-xl font-bold">{t.title}</h2>
+    <section className="space-y-5 rounded-3xl border border-white/10 bg-night/60 p-8 text-center backdrop-blur-md">
+      <h2 className="font-display text-3xl font-bold tracking-tight text-frost">{t.title}</h2>
 
       {winnerId ? (
-        <p className="text-lg">
-          🏆 {t.winner}: <span className="font-semibold text-emerald-400">{winner?.nickname ?? winnerId}</span>
-        </p>
+        <div className="space-y-2">
+          <p aria-hidden className="text-5xl">🏆</p>
+          <p className="text-sm uppercase tracking-wide text-ice/50">{t.winner}</p>
+          <p className="font-display text-2xl font-bold text-frost">{winner?.nickname ?? winnerId}</p>
+        </div>
       ) : (
-        <p className="text-slate-300">
+        <p className="text-sm text-ice/60">
           {t.noWinner}
-          {reasonKey ? ` — ${t[reasonKey]}` : reason ? ` — ${reason}` : ""}
+          {reasonKey ? ` · ${t[reasonKey]}` : reason ? ` · ${reason}` : ""}
         </p>
       )}
 
@@ -46,7 +48,7 @@ export default function MatchResult({ winnerId, reason, players, onBackToLanding
           <button
             type="button"
             onClick={onPlayAgain}
-            className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+            className="rounded-full bg-glacier-deep px-8 py-2.5 font-display text-base font-bold text-frost shadow-lg shadow-glacier-deep/40 transition-colors hover:bg-glacier"
           >
             {strings[locale].play.result.playAgain}
           </button>
@@ -54,7 +56,7 @@ export default function MatchResult({ winnerId, reason, players, onBackToLanding
         <button
           type="button"
           onClick={onBackToLanding}
-          className="rounded border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800"
+          className="rounded-full border border-white/15 px-6 py-2.5 font-display text-base font-semibold text-ice transition-colors hover:border-white/35 hover:text-frost"
         >
           {strings[locale].common.back}
         </button>

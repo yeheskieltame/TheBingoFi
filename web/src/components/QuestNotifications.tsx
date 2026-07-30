@@ -17,9 +17,9 @@ export default function QuestNotifications({ notifications }: QuestNotifications
   return (
     <section
       aria-live="polite"
-      className="space-y-1 rounded border border-amber-500/50 bg-amber-600/10 p-3 text-sm text-amber-300"
+      className="space-y-1 rounded-2xl border border-amber-400/40 bg-amber-500/15 p-3 text-sm text-amber-100 backdrop-blur-md"
     >
-      <h2 className="font-semibold">{t.title}</h2>
+      <h2 className="font-display font-bold">{t.title}</h2>
       <ul className="space-y-0.5">
         {notifications.map((notification, index) => (
           <li key={`${notification.questId}-${index}`}>🏅 {notification.title}</li>

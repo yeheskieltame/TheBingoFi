@@ -23,6 +23,10 @@ export interface LocaleStrings {
     joinCodeLabel: string;
     /** Label baris "gabung via kode" di bawah kartu-kartu mode main. */
     joinPrompt: string;
+    /** Tombol aksi utama di bawah kartu mode terpilih. */
+    playNow: string;
+    /** Label a11y untuk deretan kartu mode (radiogroup). */
+    modePickerLabel: string;
     joinRoom: string;
     dailyLink: string;
     questsLink: string;
@@ -130,6 +134,8 @@ export const strings = {
       joinCodeLabel: "Kode Room",
       joinRoom: "Gabung",
       joinPrompt: "Punya kode room?",
+      playNow: "Main Sekarang",
+      modePickerLabel: "Pilih mode main",
       dailyLink: "Daily Challenge",
       questsLink: "Quests",
       marketLink: "Marketplace",
@@ -413,6 +419,8 @@ export const strings = {
       joinCodeLabel: "Room Code",
       joinRoom: "Join",
       joinPrompt: "Got a room code?",
+      playNow: "Play Now",
+      modePickerLabel: "Pick a game mode",
       dailyLink: "Daily Challenge",
       questsLink: "Quests",
       marketLink: "Marketplace",

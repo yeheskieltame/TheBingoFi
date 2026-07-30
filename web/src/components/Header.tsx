@@ -17,6 +17,7 @@ import { truncateAddress } from "@/lib/chain";
  * wagmi/useLocale directly rather than needing props threaded from a
  * layout-level fetch.
  */
+
 /**
  * Nav links, in display order - satu sumber supaya markup-nya tidak diulang 4x.
  * "Play" menunjuk ke landing (form nickname + mode ada di sana, /play sendiri
@@ -56,7 +57,7 @@ export default function Header() {
         </Link>
 
         <nav aria-label={t.nav.home} className="md:justify-self-center">
-          <ul className="flex flex-wrap items-center justify-center gap-1">
+          <ul className="flex flex-wrap items-center justify-center gap-0.5 lg:gap-1">
             {NAV_ITEMS.map((item) => {
               // startsWith menangkap sub-route (mis. /market/xyz nanti ikut menyala);
               // `also` menangkap halaman lain yang masih "milik" entri ini (/play).
@@ -67,7 +68,7 @@ export default function Header() {
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className={`relative block rounded-full px-3 py-1.5 font-display text-base transition-colors after:absolute after:inset-x-3 after:-bottom-0.5 after:h-0.5 after:rounded-full after:transition-colors after:content-[''] ${
+                    className={`relative block whitespace-nowrap rounded-full px-2.5 py-1.5 font-display text-[0.95rem] transition-colors lg:px-3 lg:text-base after:absolute after:inset-x-3 after:-bottom-0.5 after:h-0.5 after:rounded-full after:transition-colors after:content-[''] ${
                       active
                         ? "font-bold text-frost after:bg-frost"
                         : "font-semibold text-ice/60 after:bg-transparent hover:text-frost"
@@ -81,28 +82,11 @@ export default function Header() {
           </ul>
         </nav>
 
-        <div className="flex items-center gap-2 md:justify-self-end">
-          {wallet.isConnected && wallet.address ? (
-            <Link
-              href={`/profile/${wallet.address}`}
-              className="hidden h-9 items-center rounded-full border border-white/15 px-4 font-display text-sm font-semibold text-ice transition-colors hover:border-white/30 hover:text-frost sm:flex"
-            >
-              {t.nav.profile}
-            </Link>
-          ) : (
-            <span
-              aria-disabled="true"
-              title={t.nav.profileConnectHint}
-              className="hidden h-9 cursor-not-allowed items-center rounded-full border border-white/8 px-4 font-display text-sm font-semibold text-ice/30 sm:flex"
-            >
-              {t.nav.profile}
-            </span>
-          )}
-
+        <div className="flex shrink-0 items-center gap-1.5 md:justify-self-end">
           <button
             type="button"
             onClick={toggleLocale}
-            className="flex h-9 items-center gap-1.5 rounded-full border border-white/15 pl-2.5 pr-3 text-ice transition-colors hover:border-white/30 hover:text-frost"
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-white/15 pl-2.5 pr-3 text-ice transition-colors hover:border-white/30 hover:text-frost"
             aria-label={t.nav.langSwitch}
             title={t.nav.langSwitch}
           >
@@ -121,21 +105,24 @@ export default function Header() {
                   type="button"
                   onClick={wallet.switchToGiwaSepolia}
                   disabled={wallet.isSwitchingNetwork}
-                  className="flex h-9 items-center rounded-full bg-amber-500 px-4 font-display text-sm font-bold text-night transition-colors hover:bg-amber-400 disabled:opacity-60"
+                  className="flex h-9 shrink-0 items-center whitespace-nowrap rounded-full bg-amber-500 px-4 font-display text-sm font-bold text-night transition-colors hover:bg-amber-400 disabled:opacity-60"
                 >
                   {wallet.isSwitchingNetwork ? t.wallet.switching : t.wallet.switchNetwork}
                 </button>
               )}
-              <span
-                className="hidden h-9 items-center rounded-full border border-white/15 px-3 font-mono text-xs text-ice sm:flex"
-                title={wallet.address}
+              {/* Address pill SEKALIGUS pintu ke profil - satu elemen, bukan dua
+                  (tombol "My Profile" terpisah bikin bar kanan sesak & wrap). */}
+              <Link
+                href={`/profile/${wallet.address}`}
+                title={`${t.nav.profile} · ${wallet.address}`}
+                className="hidden h-9 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-3 font-mono text-xs text-ice transition-colors hover:border-white/30 hover:text-frost sm:flex"
               >
                 {truncateAddress(wallet.address ?? "")}
-              </span>
+              </Link>
               <button
                 type="button"
                 onClick={wallet.disconnect}
-                className="flex h-9 items-center rounded-full border border-white/15 px-4 font-display text-sm font-semibold text-ice transition-colors hover:border-white/30 hover:text-frost"
+                className="flex h-9 shrink-0 items-center whitespace-nowrap rounded-full border border-white/15 px-4 font-display text-sm font-semibold text-ice transition-colors hover:border-white/30 hover:text-frost"
               >
                 {t.wallet.disconnect}
               </button>
@@ -146,7 +133,7 @@ export default function Header() {
               onClick={wallet.connect}
               disabled={wallet.isConnecting || !wallet.hasConnector}
               title={wallet.hasConnector ? undefined : t.wallet.notInstalled}
-              className="flex h-9 items-center rounded-full bg-frost px-5 font-display text-sm font-bold text-glacier-ink transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-9 shrink-0 items-center whitespace-nowrap rounded-full bg-frost px-5 font-display text-sm font-bold text-glacier-ink transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {wallet.isConnecting ? t.wallet.connecting : t.wallet.connect}
             </button>

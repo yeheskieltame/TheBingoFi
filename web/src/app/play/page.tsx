@@ -1,6 +1,7 @@
 "use client";
 
 import { CELL_SWAP, MIN_PLAYERS, WILD_DAUB } from "@thebingofi/server/engine";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 
@@ -160,19 +161,33 @@ function PlayScreen() {
   const isHost = room.state.lobby?.hostId === room.state.playerId;
 
   return (
-    <main className="space-y-6">
-      <h1 className="text-2xl font-bold">{t.title}</h1>
+    <main className="mx-auto max-w-3xl space-y-5 py-4">
+      {/* Latar art yang sama dengan landing supaya perpindahan / -> /play tidak
+          terasa ganti aplikasi. Fixed, jadi tidak ikut scroll saat match panjang. */}
+      <div aria-hidden className="fixed inset-0 -z-10">
+        <Image
+          src="/images/background/bg.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-top"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-night/45 via-night/80 to-night" />
+      </div>
+
+      <h1 className="text-center font-display text-2xl font-bold tracking-tight text-frost">{t.title}</h1>
 
       {room.state.error && (
         <div
           role="alert"
-          className="flex items-center justify-between gap-3 rounded border border-red-600 bg-red-950/60 px-3 py-2 text-sm text-red-300"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-red-500/40 bg-red-950/60 px-4 py-2.5 text-sm text-red-200 backdrop-blur-md"
         >
           <span>{room.state.error}</span>
           <button
             type="button"
             onClick={room.clearError}
-            className="shrink-0 rounded border border-red-500 px-2 py-0.5 text-xs font-semibold hover:bg-red-900"
+            className="shrink-0 rounded-full border border-red-400/50 px-3 py-0.5 font-display text-xs font-semibold hover:bg-red-900/60"
           >
             {strings[locale].common.dismiss}
           </button>
@@ -181,7 +196,7 @@ function PlayScreen() {
 
       <QuestNotifications notifications={room.state.questNotifications} />
 
-      {room.phase === null && <p className="text-slate-400">{t.connecting}</p>}
+      {room.phase === null && <p className="text-center text-sm text-ice/55">{t.connecting}</p>}
 
       {room.phase === "lobby" && room.state.lobby && (
         <Lobby
@@ -218,13 +233,13 @@ function PlayScreen() {
       )}
 
       {room.phase === "draft" && room.state.lobby && (
-        <section className="space-y-4">
+        <section className="space-y-4 rounded-3xl border border-white/10 bg-night/55 p-4 backdrop-blur-md sm:p-6">
           {me?.hasSubmittedBoard ? (
-            <p className="text-slate-300">{t.draft.locked}</p>
+            <p className="text-center text-sm text-ice/70">{t.draft.locked}</p>
           ) : (
             <>
               {/* Heading fase draft: DraftBoard sendiri cuma merender grid-nya. */}
-              <h2 className="font-display text-xl font-bold">{t.draft.title}</h2>
+              <h2 className="text-center font-display text-xl font-bold text-frost">{t.draft.title}</h2>
               <DraftBoard
                 numbers={draft.numbers}
                 selectedIndex={draft.selectedIndex}
@@ -238,7 +253,7 @@ function PlayScreen() {
                 type="button"
                 onClick={() => room.submitDraft(draft.numbers)}
                 disabled={room.state.pending || !draft.validation.valid}
-                className="rounded bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mx-auto block rounded-full bg-glacier-deep px-10 py-2.5 font-display text-base font-bold text-frost shadow-lg shadow-glacier-deep/40 transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
               >
                 {t.draft.lockBoard}
               </button>
@@ -291,8 +306,8 @@ export default function PlayPage() {
   return (
     <Suspense
       fallback={
-        <main>
-          <p className="text-slate-400">{strings[locale].common.loading}</p>
+        <main className="py-10">
+          <p className="text-center text-sm text-ice/55">{strings[locale].common.loading}</p>
         </main>
       }
     >
