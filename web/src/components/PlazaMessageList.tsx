@@ -15,6 +15,22 @@ export interface PlazaMessageListProps {
   readonly skillTier: (skillId: number) => SkillTier | undefined;
 }
 
+/** Warna avatar diturunkan dari nickname supaya orang yang sama selalu punya warna yang sama, tanpa perlu state/nyimpen apa pun. */
+const AVATAR_TINTS = [
+  "bg-glacier/70",
+  "bg-sky-500/60",
+  "bg-indigo-500/60",
+  "bg-teal-500/55",
+  "bg-violet-500/55",
+  "bg-cyan-500/55",
+] as const;
+
+function tintFor(nickname: string): string {
+  let hash = 0;
+  for (let i = 0; i < nickname.length; i++) hash = (hash * 31 + nickname.charCodeAt(i)) >>> 0;
+  return AVATAR_TINTS[hash % AVATAR_TINTS.length]!;
+}
+
 /**
  * Scrolling message list for /plaza (CONCEPT.md §7.4b), auto-scrolled to the
  * newest message. Auto-scroll is local, UI-only state (see web/README.md's
@@ -32,24 +48,37 @@ export default function PlazaMessageList({ messages, skillName, skillTier }: Pla
 
   if (messages.length === 0) {
     return (
-      <p className="flex h-96 items-center justify-center rounded border border-slate-800 bg-slate-900/40 text-sm text-slate-500">
+      <p className="flex h-96 items-center justify-center rounded-3xl border border-white/10 bg-night/50 text-sm text-ice/45 backdrop-blur-md">
         {t.emptyHistory}
       </p>
     );
   }
 
   return (
-    <ul className="flex h-96 flex-col gap-3 overflow-y-auto rounded border border-slate-800 bg-slate-900/40 p-3">
+    <ul className="flex h-96 flex-col gap-3 overflow-y-auto rounded-3xl border border-white/10 bg-night/50 p-4 backdrop-blur-md">
       {messages.map((message) => (
-        <li key={message.id} className="text-sm">
-          <div className="flex items-baseline gap-2">
-            <span className="font-semibold text-indigo-300">{message.nickname}</span>
-            <span className="text-[10px] text-slate-500">{new Date(message.at).toLocaleTimeString()}</span>
+        <li key={message.id} className="flex gap-2.5 text-sm">
+          <span
+            aria-hidden
+            className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full font-display text-xs font-bold text-frost ${tintFor(message.nickname)}`}
+          >
+            {message.nickname.slice(0, 2).toUpperCase()}
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline gap-2">
+              <span className="font-display font-bold text-frost">{message.nickname}</span>
+              <span className="text-[10px] text-ice/35">{new Date(message.at).toLocaleTimeString()}</span>
+            </div>
+            <p className="break-words text-frost/80">{message.text}</p>
+            {message.skillId !== undefined && (
+              <PlazaSkillCard
+                skillId={message.skillId}
+                name={skillName(message.skillId)}
+                tier={skillTier(message.skillId)}
+              />
+            )}
           </div>
-          <p className="break-words text-slate-200">{message.text}</p>
-          {message.skillId !== undefined && (
-            <PlazaSkillCard skillId={message.skillId} name={skillName(message.skillId)} tier={skillTier(message.skillId)} />
-          )}
         </li>
       ))}
       <div ref={bottomRef} />

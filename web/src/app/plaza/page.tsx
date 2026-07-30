@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState } from "react";
 
 import PlazaMessageList from "@/components/PlazaMessageList";
@@ -79,15 +80,28 @@ export default function PlazaPage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold">{t.title}</h1>
-        <p className="text-sm text-slate-400">{t.subtitle}</p>
+    <main className="mx-auto max-w-2xl space-y-4 py-6">
+      {/* Latar art satu halaman, sama dengan /, /play, /daily, /quests, /market. */}
+      <div aria-hidden className="fixed inset-0 -z-10">
+        <Image
+          src="/images/background/bg.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-top"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-night/50 via-night/80 to-night" />
       </div>
 
+      <header className="text-center">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-frost sm:text-3xl">{t.title}</h1>
+        <p className="mx-auto max-w-md text-sm text-frost/60">{t.subtitle}</p>
+      </header>
+
       {!nickname ? (
-        <form onSubmit={handleSaveNickname} className="space-y-2 rounded border border-slate-800 bg-slate-900/60 p-4">
-          <label htmlFor="plaza-nickname" className="text-sm font-semibold text-slate-300">
+        <form onSubmit={handleSaveNickname} className="space-y-2 rounded-3xl border border-white/10 bg-night/55 p-5 backdrop-blur-md">
+          <label htmlFor="plaza-nickname" className="font-display text-sm font-bold text-frost">
             {t.nicknamePrompt}
           </label>
           <div className="flex gap-2">
@@ -96,12 +110,12 @@ export default function PlazaPage() {
               value={nicknameDraft}
               onChange={(event) => setNicknameDraft(event.target.value)}
               placeholder={t.nicknameLabel}
-              className="flex-1 rounded border border-slate-700 bg-slate-950 px-3 py-2 text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="flex-1 rounded-full border border-white/15 bg-night/60 px-4 py-2 text-frost placeholder:text-ice/35 focus:border-white/35 focus:outline-none"
             />
             <button
               type="submit"
               disabled={!nicknameDraft.trim()}
-              className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full bg-glacier-deep px-6 py-2 font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
             >
               {t.nicknameSave}
             </button>
@@ -114,13 +128,13 @@ export default function PlazaPage() {
           {plaza.error && (
             <div
               role="alert"
-              className="flex items-center justify-between gap-3 rounded border border-red-600 bg-red-950/60 px-3 py-2 text-sm text-red-300"
+              className="flex items-center justify-between gap-3 rounded-2xl border border-red-500/40 bg-red-950/60 px-4 py-2.5 text-sm text-red-200 backdrop-blur-md"
             >
               <span>{plaza.error}</span>
               <button
                 type="button"
                 onClick={plaza.clearError}
-                className="shrink-0 rounded border border-red-500 px-2 py-0.5 text-xs font-semibold hover:bg-red-900"
+                className="shrink-0 rounded-full border border-red-400/50 px-3 py-0.5 font-display text-xs font-semibold hover:bg-red-900/60"
               >
                 {strings[locale].common.dismiss}
               </button>
@@ -130,13 +144,13 @@ export default function PlazaPage() {
           <form onSubmit={handleSend} className="space-y-2">
             {wallet.isConnected ? (
               ownedSkills.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-ice/55">
                   <label htmlFor="plaza-attach-skill">{t.attachSkillLabel}</label>
                   <select
                     id="plaza-attach-skill"
                     value={attachedSkillId}
                     onChange={(event) => setAttachedSkillId(event.target.value === "" ? "" : Number(event.target.value))}
-                    className="rounded border border-slate-700 bg-slate-950 px-2 py-1 text-slate-200"
+                    className="rounded-full border border-white/15 bg-night/60 px-3 py-1 font-display text-ice"
                   >
                     <option value="">{t.attachSkillNone}</option>
                     {ownedSkills.map((entry) => (
@@ -147,10 +161,10 @@ export default function PlazaPage() {
                   </select>
                 </div>
               ) : (
-                <p className="text-xs text-slate-500">{t.noSkillsOwned}</p>
+                <p className="text-xs text-ice/45">{t.noSkillsOwned}</p>
               )
             ) : (
-              <p className="text-xs text-slate-500">{t.connectForSkills}</p>
+              <p className="text-xs text-ice/45">{t.connectForSkills}</p>
             )}
 
             <div className="flex gap-2">
@@ -163,12 +177,12 @@ export default function PlazaPage() {
                 onChange={(event) => setText(event.target.value)}
                 placeholder={t.composerPlaceholder}
                 maxLength={280}
-                className="flex-1 rounded border border-slate-700 bg-slate-900 px-3 py-2 text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                className="flex-1 rounded-full border border-white/15 bg-night/60 px-4 py-2.5 text-frost backdrop-blur-md placeholder:text-ice/35 focus:border-white/35 focus:outline-none"
               />
               <button
                 type="submit"
                 disabled={plaza.sending || !text.trim()}
-                className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-full bg-glacier-deep px-6 py-2.5 font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
               >
                 {t.send}
               </button>
