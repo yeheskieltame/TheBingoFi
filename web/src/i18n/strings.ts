@@ -302,6 +302,13 @@ export const strings = {
         score: "Skor",
         callsToBingo: "Call ke Bingo",
         shareCardTitle: "Share Card",
+        // Kartu hasil yang dipajang untuk di-screenshot/dibagikan.
+        shareHint: "Screenshot kartu ini, atau bagikan lewat tombol di bawah.",
+        shareX: "Share ke X",
+        shareTelegram: "Telegram",
+        copyText: "Salin teks",
+        shareText: "Aku selesai BINGO di call ke-",
+        lines: "garis",
       },
       leaderboard: {
         title: "Leaderboard",
@@ -606,6 +613,13 @@ export const strings = {
         score: "Score",
         callsToBingo: "Calls to Bingo",
         shareCardTitle: "Share Card",
+        // Result card meant to be screenshotted / shared.
+        shareHint: "Screenshot this card, or share it with the buttons below.",
+        shareX: "Share on X",
+        shareTelegram: "Telegram",
+        copyText: "Copy text",
+        shareText: "I hit BINGO on call ",
+        lines: "lines",
       },
       leaderboard: {
         title: "Leaderboard",
