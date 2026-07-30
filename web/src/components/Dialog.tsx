@@ -1,7 +1,10 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import Image from "next/image";
+import { createPortal } from "react-dom";
+import { LuX } from "react-icons/lu";
 
 import { useLocale } from "@/hooks/useLocale";
 import { strings } from "@/i18n/strings";
@@ -11,22 +14,42 @@ export interface DialogProps {
   readonly title: string;
   readonly description?: string;
   readonly onClose: () => void;
+  /** "md" (default) untuk panel opsi, "lg" untuk konten dengan art/statistik. */
+  readonly size?: "md" | "lg";
+  /**
+   * Art panel (opsional). Kalau diisi, modal memakai layout dua kolom: art
+   * memenuhi kolom kiri, judul/opsi/aksi di kolom kanan - memberi konteks
+   * visual "ini mode apa" alih-alih panel gelap polos. Di layar sempit art
+   * turun jadi strip atas supaya kolom kanan tetap lega.
+   */
+  readonly artImage?: string;
   readonly children: ReactNode;
 }
 
 /**
- * Dumb: modal serbaguna. Dipakai untuk opsi mode main (/) dan leaderboard
- * harian (/daily) - keduanya konten sekunder yang kalau dirender inline malah
- * mendorong halaman dan menutupi art, sementara sebagai modal ia muncul saat
- * diminta lalu hilang lagi.
+ * Dumb: modal serbaguna. Dipakai untuk opsi mode main (/), leaderboard harian
+ * (/daily), dan detail skill (/market) - konten sekunder yang kalau dirender
+ * inline malah mendorong halaman dan menutupi art.
  *
  * Animasi: overlay fade + panel spring (motion). Esc dan klik overlay menutup;
  * `overflow-hidden` di <body> dipasang selama terbuka supaya latar tidak ikut
- * ter-scroll di belakang modal.
+ * ter-scroll di belakang modal. Di-portal ke <body> karena beberapa halaman
+ * membungkus isinya dalam elemen ber-transform, yang akan mengurung `fixed`.
  */
-export default function Dialog({ open, title, description, onClose, children }: DialogProps) {
+export default function Dialog({
+  open,
+  title,
+  description,
+  onClose,
+  size = "md",
+  artImage,
+  children,
+}: DialogProps) {
   const locale = useLocale();
   const t = strings[locale].common;
+  // Portal baru dipasang setelah mount supaya markup server dan klien cocok.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     if (!open) return;
@@ -42,7 +65,21 @@ export default function Dialog({ open, title, description, onClose, children }: 
     };
   }, [open, onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  const split = artImage !== undefined;
+  const maxWidth = split ? "max-w-3xl" : size === "lg" ? "max-w-2xl" : "max-w-md";
+
+  const header = (
+    <div className={split ? "space-y-1" : "px-10 text-center"}>
+      <h2 className="font-display text-xl font-bold text-frost">{title}</h2>
+      {description && (
+        <p className={`text-sm leading-relaxed text-ice/55 ${split ? "" : "mx-auto max-w-sm"}`}>{description}</p>
+      )}
+    </div>
+  );
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -63,7 +100,9 @@ export default function Dialog({ open, title, description, onClose, children }: 
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            className="relative w-full max-w-md rounded-3xl border border-white/12 bg-night/95 p-5 shadow-2xl shadow-black/60 sm:p-6"
+            tabIndex={-1}
+            ref={(node) => node?.focus()}
+            className={`relative w-full ${maxWidth} max-h-[88vh] overflow-hidden rounded-3xl border border-white/12 bg-night/95 shadow-2xl shadow-black/60 outline-none`}
             initial={{ opacity: 0, scale: 0.88, y: 24 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.92, y: 12 }}
@@ -73,21 +112,45 @@ export default function Dialog({ open, title, description, onClose, children }: 
               type="button"
               onClick={onClose}
               aria-label={t.close}
-              autoFocus
-              className="absolute right-3 top-3 grid size-8 place-items-center rounded-full border border-white/15 font-display text-sm text-ice transition-colors hover:border-white/35 hover:text-frost"
+              title={t.close}
+              className="absolute right-4 top-4 z-20 grid size-10 place-items-center rounded-full bg-night/50 text-ice/70 backdrop-blur-sm transition-colors hover:bg-white/15 hover:text-frost focus-visible:bg-white/15 focus-visible:text-frost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-frost/60 active:scale-95"
             >
-              ✕
+              <LuX aria-hidden className="size-5" />
             </button>
 
-            <div className="mb-4 pr-8 text-center">
-              <h2 className="font-display text-lg font-bold text-frost">{title}</h2>
-              {description && <p className="mx-auto max-w-sm text-xs text-ice/55">{description}</p>}
-            </div>
+            {split ? (
+              <div className="grid max-h-[88vh] sm:grid-cols-[minmax(0,40%)_minmax(0,1fr)]">
+                {/* Kolom art: penuh tinggi di desktop, strip di mobile supaya
+                    kolom aksi tidak terdorong keluar layar. */}
+                <div className="relative h-32 sm:h-auto">
+                  <Image
+                    src={artImage}
+                    alt=""
+                    fill
+                    sizes="(max-width: 640px) 100vw, 320px"
+                    className="object-cover object-top"
+                  />
+                  <div
+                    aria-hidden
+                    className="absolute inset-0 bg-gradient-to-t from-night via-night/25 to-transparent sm:bg-gradient-to-r sm:from-transparent sm:via-night/10 sm:to-night"
+                  />
+                </div>
 
-            {children}
+                <div className="space-y-5 overflow-y-auto p-5 pr-14 sm:p-6 sm:pr-14">
+                  {header}
+                  {children}
+                </div>
+              </div>
+            ) : (
+              <div className="max-h-[88vh] space-y-4 overflow-y-auto p-5 sm:p-6">
+                {header}
+                {children}
+              </div>
+            )}
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
