@@ -123,6 +123,7 @@ export default function DailyPage() {
               score={daily.result.score}
               callsToBingo={daily.result.callsToBingo}
               shareCard={daily.result.shareCard}
+              markedAtBingo={daily.result.markedAtBingo}
               copied={copied}
               onCopy={handleCopy}
             />
