@@ -7,6 +7,8 @@ export interface SkillMediaProps {
   readonly animationUrl?: string;
   /** Used for the alt text and the initials fallback tile. */
   readonly label: string;
+  /** Ukuran/bentuk slot art - default petak kecil; /market memakai panel besar di kepala kartu. */
+  readonly className?: string;
 }
 
 /**
@@ -23,7 +25,12 @@ export interface SkillMediaProps {
  * the URL's domain isn't known/configurable ahead of time, and next/image's
  * remotePatterns allowlist would need a real asset host to be useful.
  */
-export default function SkillMedia({ imageUrl, animationUrl, label }: SkillMediaProps) {
+export default function SkillMedia({
+  imageUrl,
+  animationUrl,
+  label,
+  className = "h-20 w-20 shrink-0 rounded",
+}: SkillMediaProps) {
   const [videoBroken, setVideoBroken] = useState(false);
   const [imageBroken, setImageBroken] = useState(false);
   const initials = label.trim().slice(0, 2).toUpperCase() || "?";
@@ -32,7 +39,7 @@ export default function SkillMedia({ imageUrl, animationUrl, label }: SkillMedia
     return (
       <video
         src={animationUrl}
-        className="h-20 w-20 shrink-0 rounded bg-slate-800 object-cover"
+        className={`${className} bg-white/5 object-cover object-top`}
         muted
         loop
         playsInline
@@ -49,7 +56,7 @@ export default function SkillMedia({ imageUrl, animationUrl, label }: SkillMedia
       <img
         src={imageUrl}
         alt={label}
-        className="h-20 w-20 shrink-0 rounded bg-slate-800 object-cover"
+        className={`${className} bg-white/5 object-cover object-top`}
         onError={() => setImageBroken(true)}
       />
     );
@@ -58,7 +65,7 @@ export default function SkillMedia({ imageUrl, animationUrl, label }: SkillMedia
   return (
     <div
       aria-hidden="true"
-      className="flex h-20 w-20 shrink-0 items-center justify-center rounded bg-slate-800 text-xl font-bold text-slate-500"
+      className={`${className} flex items-center justify-center bg-gradient-to-br from-white/10 to-white/[0.02] font-display text-3xl font-bold tracking-widest text-ice/25`}
     >
       {initials}
     </div>

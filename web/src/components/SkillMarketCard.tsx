@@ -1,6 +1,7 @@
 import { formatEther } from "viem";
 import type { SkillMetadataResponse } from "@thebingofi/server/protocol";
 
+import AmountStepper from "@/components/AmountStepper";
 import SkillMedia from "@/components/SkillMedia";
 import SkillTierBadge from "@/components/SkillTierBadge";
 import { useLocale } from "@/hooks/useLocale";
@@ -8,7 +9,7 @@ import type { SkillCatalogEntry } from "@/hooks/useSkillCatalog";
 import type { SaleInfo } from "@/hooks/useMarketplaceSales";
 import { strings } from "@/i18n/strings";
 import { explorerTxUrl } from "@/lib/chain";
-import { TIER_BORDER_CLASS, tierForMaxSupply } from "@/lib/skillTier";
+import { tierForMaxSupply } from "@/lib/skillTier";
 
 export type BuyStatus = "idle" | "submitting" | "confirming" | "success" | "error";
 
@@ -28,6 +29,8 @@ export interface SkillMarketCardProps {
   readonly buyError: string | null;
   readonly txHash: string | undefined;
   readonly onBuy: () => void;
+  /** Buka dialog detail skill (art besar + seluruh statistik) - lihat /market page.tsx. */
+  readonly onViewDetails: () => void;
 }
 
 /**
@@ -52,6 +55,7 @@ export default function SkillMarketCard({
   buyError,
   txHash,
   onBuy,
+  onViewDetails,
 }: SkillMarketCardProps) {
   const locale = useLocale();
   const t = strings[locale].market;
@@ -59,6 +63,8 @@ export default function SkillMarketCard({
   const effectNames: Record<string, string> = strings[locale].play.skills.effectNames;
   const fallbackName = effectNames[entry.effectType] ?? entry.effectType;
   const displayName = metadata?.name ?? fallbackName;
+  /** Art default sampai metadata skill menunjuk ilustrasinya sendiri. */
+  const artUrl = metadata?.image ?? "/images/card/card-marketplace.webp";
 
   const remaining = sale ? sale.maxSupply - sale.minted : 0n;
   const soldOut = sale ? remaining <= 0n : false;
@@ -73,127 +79,132 @@ export default function SkillMarketCard({
   let pricePct = 0;
   if (sale && sale.basePrice > 0n && currentPrice !== undefined) {
     if (currentPrice < sale.basePrice) {
-      priceBadge = "discount";
       pricePct = Number(((sale.basePrice - currentPrice) * 100n) / sale.basePrice);
+      if (pricePct >= 1) priceBadge = "discount";
     } else if (currentPrice > sale.basePrice) {
-      priceBadge = "premium";
       pricePct = Number(((currentPrice - sale.basePrice) * 100n) / sale.basePrice);
+      if (pricePct >= 1) priceBadge = "premium";
     }
   }
 
   return (
-    <li className={`space-y-2 rounded-2xl border bg-night/45 p-4 backdrop-blur-md ${tier ? TIER_BORDER_CLASS[tier] : "border-white/10"}`}>
-      <div className="flex items-start gap-3">
-        <SkillMedia imageUrl={metadata?.image} animationUrl={metadata?.animation_url} label={displayName} />
-        <div className="min-w-0 flex-1 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-display text-base font-bold text-frost">{displayName}</h3>
-            {tier && <SkillTierBadge tier={tier} />}
-            {!entry.active && <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-ice">{t.inactive}</span>}
-          </div>
-          <p className="text-xs text-ice/55">
-            #{entry.skillId} · {t.rarity} {entry.rarity}
-          </p>
-          {metadata?.description && <p className="text-xs text-ice/55">{metadata.description}</p>}
-        </div>
+    /* Satu bidang: art memenuhi kartu, seluruh info duduk sebagai overlay di
+       atasnya. Sebelumnya art dan blok teks terpisah, jadi kartunya jangkung
+       (tombol beli sampai keluar layar) dan menyisakan ruang kosong. */
+    <li className="group relative flex aspect-[3/4] flex-col justify-end overflow-hidden rounded-2xl border border-white/10 bg-night/70 transition-all hover:-translate-y-1 hover:border-frost/40">
+      <SkillMedia
+        imageUrl={artUrl}
+        animationUrl={metadata?.animation_url}
+        label={displayName}
+        className="absolute inset-0 h-full w-full transition-transform duration-500 group-hover:scale-105"
+      />
+      <div aria-hidden className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-night via-night/85 to-transparent" />
+
+
+      <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
+        {tier && <SkillTierBadge tier={tier} />}
+        {priceBadge === "discount" && (
+          <span className="rounded-full bg-emerald-500/90 px-2 py-0.5 font-display text-[0.7rem] font-bold text-night">
+            ▼ {pricePct}%
+          </span>
+        )}
+        {priceBadge === "premium" && (
+          <span className="rounded-full bg-amber-400/90 px-2 py-0.5 font-display text-[0.7rem] font-bold text-night">
+            ▲ {pricePct}%
+          </span>
+        )}
+        {!entry.active && <span className="rounded-full bg-night/80 px-2 py-0.5 text-[0.7rem] text-ice">{t.inactive}</span>}
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-frost/80">
-        <dt className="text-ice/45">{t.charges}</dt>
-        <dd>{entry.charges}</dd>
-        <dt className="text-ice/45">{t.cooldown}</dt>
-        <dd>{entry.cooldown}</dd>
-        <dt className="text-ice/45">{t.maxPerLoadout}</dt>
-        <dd>{entry.maxPerLoadout}</dd>
-        <dt className="text-ice/45">{t.yourBalance}</dt>
-        <dd>{ownedBalance.toString()}</dd>
-      </dl>
+      <div className="relative space-y-2 p-3">
+        <div>
+          <button
+            type="button"
+            onClick={onViewDetails}
+            className="block max-w-full truncate text-left font-display text-base font-bold leading-tight text-frost transition-colors hover:text-glacier"
+          >
+            {displayName}
+          </button>
+          <p className="truncate text-[0.7rem] text-ice/50">
+            #{entry.skillId} · {t.charges} {entry.charges} · {t.maxPerLoadout} {entry.maxPerLoadout}
+          </p>
+        </div>
 
-      {sale ? (
-        <div className="space-y-1.5 text-sm">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <span className="text-ice/45">{t.price}:</span>
-            {priceLoading || currentPrice === undefined ? (
-              <span className="text-ice/45">{t.loading}</span>
-            ) : (
-              <span className="font-display font-bold text-frost">{formatEther(currentPrice)} ETH</span>
-            )}
-            {priceBadge === "discount" && (
-              <>
-                <span className="text-xs text-ice/45 line-through">{formatEther(sale.basePrice)} ETH</span>
-                <span className="rounded bg-emerald-900/60 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
-                  {t.discountBadge} {pricePct}%
+        {sale ? (
+          <>
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="flex items-baseline gap-1.5">
+                <span className="font-display text-lg font-bold leading-none text-frost">
+                  {priceLoading || currentPrice === undefined ? "—" : formatEther(currentPrice)}
                 </span>
-              </>
-            )}
-            {priceBadge === "premium" && (
-              <span className="rounded bg-amber-900/60 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
-                {t.premiumBadge}
+                <span className="text-[0.7rem] text-ice/45">ETH</span>
+                {priceBadge === "discount" && (
+                  <span className="text-[0.7rem] text-ice/35 line-through">{formatEther(sale.basePrice)}</span>
+                )}
               </span>
-            )}
-          </div>
+              <span className={`text-[0.7rem] ${soldOut ? "text-red-300" : "text-ice/45"}`}>
+                {soldOut ? t.soldOut : `${remaining.toString()}/${sale.maxSupply.toString()}`}
+              </span>
+            </div>
 
-          <div className="space-y-1">
-            <p className={soldOut ? "text-red-300" : "text-frost/70"}>
-              {soldOut ? t.soldOut : `${t.stockRemaining} ${remaining.toString()} ${t.stockOf} ${sale.maxSupply.toString()}`}
-            </p>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10" aria-hidden="true">
+            <div className="h-1 w-full overflow-hidden rounded-full bg-white/15" aria-hidden="true">
               <div
                 className={`h-full ${soldOut ? "bg-red-400" : "bg-glacier"}`}
                 style={{ width: `${Math.min(100, Math.max(0, stockPct))}%` }}
               />
             </div>
-          </div>
-        </div>
-      ) : (
-        <p className="text-xs text-ice/45">{t.loading}</p>
-      )}
+          </>
+        ) : (
+          <p className="text-xs text-ice/45">{t.loading}</p>
+        )}
 
-      <div className="flex items-center gap-2">
-        <label htmlFor={`amount-${entry.skillId}`} className="text-xs text-ice/55">
-          {t.amountLabel}
-        </label>
-        <input
-          id={`amount-${entry.skillId}`}
-          type="number"
-          min={1}
-          max={Math.max(1, Number(remaining > 0n ? remaining : 1n))}
-          value={amount}
-          onChange={(event) => onAmountChange(Math.max(1, Number(event.target.value) || 1))}
-          disabled={!canBuy}
-          className="w-16 rounded-full border border-white/15 bg-night/60 px-3 py-1 text-center text-sm text-frost disabled:opacity-40"
-        />
+        <div className="flex items-center gap-2">
+          <AmountStepper
+            id={`amount-${entry.skillId}`}
+            label={t.amountLabel}
+            value={amount}
+            max={Number(remaining > 0n ? remaining : 1n)}
+            disabled={!canBuy}
+            onChange={onAmountChange}
+          />
+          <button
+            type="button"
+            onClick={onBuy}
+            disabled={!canBuy || buyDisabled}
+            className="flex-1 rounded-full bg-glacier-deep py-1.5 font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            {soldOut
+              ? t.soldOut
+              : buyStatus === "submitting"
+                ? t.buying
+                : buyStatus === "confirming"
+                  ? t.confirming
+                  : `${t.buy} · ${ownedBalance.toString()}`}
+          </button>
+        </div>
+
         <button
           type="button"
-          onClick={onBuy}
-          disabled={!canBuy || buyDisabled}
-          className="ml-auto rounded-full bg-glacier-deep px-5 py-1.5 font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={onViewDetails}
+          className="w-full rounded-full border border-white/15 py-1.5 font-display text-xs font-semibold text-ice transition-colors hover:border-white/35 hover:text-frost"
         >
-          {soldOut
-            ? t.soldOut
-            : buyStatus === "submitting"
-              ? t.buying
-              : buyStatus === "confirming"
-                ? t.confirming
-                : t.buy}
+          {t.viewDetails}
         </button>
-      </div>
-      <p className="text-[11px] text-slate-500">{t.refundNote}</p>
 
-      {!walletConnected && <p className="text-xs text-amber-200">{t.connectPrompt}</p>}
-      {buyStatus === "success" && txHash && (
-        <p className="text-xs text-frost">
-          {t.buySuccess} ·{" "}
-          <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer" className="underline">
-            {t.viewTx}
-          </a>
-        </p>
-      )}
-      {buyStatus === "error" && buyError && (
-        <p role="alert" className="text-xs text-red-300">
-          {t.buyError}: {buyError}
-        </p>
-      )}
+        {buyStatus === "success" && txHash && (
+          <p className="text-[0.7rem] text-frost">
+            {t.buySuccess} ·{" "}
+            <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer" className="underline">
+              {t.viewTx}
+            </a>
+          </p>
+        )}
+        {buyStatus === "error" && buyError && (
+          <p role="alert" className="text-[0.7rem] text-red-300">
+            {t.buyError}: {buyError}
+          </p>
+        )}
+      </div>
     </li>
   );
 }
