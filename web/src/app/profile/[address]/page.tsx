@@ -22,12 +22,12 @@ interface ProfilePageProps {
 export async function generateMetadata({ params }: ProfilePageProps): Promise<Metadata> {
   const { address } = await params;
   if (!isAddress(address)) {
-    return { title: "Profil tidak ditemukan — TheBingoFi" };
+    return { title: "Profil tidak ditemukan · TheBingoFi" };
   }
 
   const short = truncateAddress(address);
-  const title = `Koleksi ${short} — TheBingoFi`;
-  const description = `Koleksi Skill & Skin NFT ${short} di TheBingoFi — bingo strategis, web2 gameplay, web3 ownership.`;
+  const title = `Koleksi ${short} · TheBingoFi`;
+  const description = `Koleksi Skill & Skin NFT ${short} di TheBingoFi. Bingo strategis, web2 gameplay, web3 ownership.`;
 
   return {
     title,
