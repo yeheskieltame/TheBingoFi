@@ -186,6 +186,8 @@ function PlayScreen() {
             <p className="text-slate-300">{t.draft.locked}</p>
           ) : (
             <>
+              {/* Heading fase draft: DraftBoard sendiri cuma merender grid-nya. */}
+              <h2 className="font-display text-xl font-bold">{t.draft.title}</h2>
               <DraftBoard
                 numbers={draft.numbers}
                 selectedIndex={draft.selectedIndex}

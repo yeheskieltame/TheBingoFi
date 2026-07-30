@@ -46,43 +46,43 @@ export default function SkillMarketCard({
   const canBuy = walletConnected && sale?.active && !soldOut && entry.active;
 
   return (
-    <li className="space-y-2 rounded border border-slate-800 bg-slate-900/60 p-4">
+    <li className="space-y-2.5 rounded-2xl border border-white/10 bg-night/45 p-4 backdrop-blur-md">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h3 className="text-lg font-semibold text-white">{effectNames[entry.effectType] ?? entry.effectType}</h3>
-          <p className="text-xs text-slate-400">
+          <h3 className="font-display text-base font-bold text-frost">{effectNames[entry.effectType] ?? entry.effectType}</h3>
+          <p className="text-xs text-ice/55">
             #{entry.skillId} · {t.rarity} {entry.rarity}
           </p>
         </div>
-        {!entry.active && <span className="rounded bg-slate-700 px-2 py-0.5 text-xs">{t.inactive}</span>}
+        {!entry.active && <span className="rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-ice">{t.inactive}</span>}
       </div>
 
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-300">
-        <dt className="text-slate-500">{t.charges}</dt>
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-frost/80">
+        <dt className="text-ice/45">{t.charges}</dt>
         <dd>{entry.charges}</dd>
-        <dt className="text-slate-500">{t.cooldown}</dt>
+        <dt className="text-ice/45">{t.cooldown}</dt>
         <dd>{entry.cooldown}</dd>
-        <dt className="text-slate-500">{t.maxPerLoadout}</dt>
+        <dt className="text-ice/45">{t.maxPerLoadout}</dt>
         <dd>{entry.maxPerLoadout}</dd>
-        <dt className="text-slate-500">{t.yourBalance}</dt>
+        <dt className="text-ice/45">{t.yourBalance}</dt>
         <dd>{ownedBalance.toString()}</dd>
       </dl>
 
       {sale ? (
         <div className="space-y-1 text-sm">
           <p>
-            {t.price}: <span className="font-semibold">{formatEther(sale.price)} ETH</span>
+            {t.price}: <span className="font-display font-bold text-frost">{formatEther(sale.price)} ETH</span>
           </p>
-          <p className={soldOut ? "text-red-400" : "text-slate-300"}>
+          <p className={soldOut ? "text-red-300" : "text-frost/70"}>
             {t.stock}: {soldOut ? t.soldOut : `${remaining.toString()} / ${sale.maxSupply.toString()}`}
           </p>
         </div>
       ) : (
-        <p className="text-xs text-slate-500">{t.loading}</p>
+        <p className="text-xs text-ice/45">{t.loading}</p>
       )}
 
       <div className="flex items-center gap-2">
-        <label htmlFor={`amount-${entry.skillId}`} className="text-xs text-slate-400">
+        <label htmlFor={`amount-${entry.skillId}`} className="text-xs text-ice/55">
           {t.amountLabel}
         </label>
         <input
@@ -93,29 +93,29 @@ export default function SkillMarketCard({
           value={amount}
           onChange={(event) => onAmountChange(Math.max(1, Number(event.target.value) || 1))}
           disabled={!canBuy}
-          className="w-20 rounded border border-slate-700 bg-slate-950 px-2 py-1 text-sm disabled:opacity-50"
+          className="w-16 rounded-full border border-white/15 bg-night/60 px-3 py-1 text-center text-sm text-frost disabled:opacity-40"
         />
         <button
           type="button"
           onClick={onBuy}
           disabled={!canBuy || buyDisabled}
-          className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="ml-auto rounded-full bg-glacier-deep px-5 py-1.5 font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-40"
         >
           {buyStatus === "submitting" ? t.buying : buyStatus === "confirming" ? t.confirming : t.buy}
         </button>
       </div>
 
-      {!walletConnected && <p className="text-xs text-amber-400">{t.connectPrompt}</p>}
+      {!walletConnected && <p className="text-xs text-amber-200">{t.connectPrompt}</p>}
       {buyStatus === "success" && txHash && (
-        <p className="text-xs text-emerald-400">
-          {t.buySuccess} —{" "}
+        <p className="text-xs text-frost">
+          {t.buySuccess} ·{" "}
           <a href={explorerTxUrl(txHash)} target="_blank" rel="noreferrer" className="underline">
             {t.viewTx}
           </a>
         </p>
       )}
       {buyStatus === "error" && buyError && (
-        <p role="alert" className="text-xs text-red-400">
+        <p role="alert" className="text-xs text-red-300">
           {t.buyError}: {buyError}
         </p>
       )}

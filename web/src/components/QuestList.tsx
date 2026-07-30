@@ -13,7 +13,7 @@ export default function QuestList({ quests, progress }: QuestListProps) {
   const t = strings[locale].quests.table;
 
   return (
-    <ul className="space-y-2">
+    <ul className="space-y-2.5">
       {quests.map((quest) => {
         const questProgress = progress?.find((entry) => entry.questId === quest.id);
         const count = questProgress?.count ?? 0;
@@ -21,18 +21,21 @@ export default function QuestList({ quests, progress }: QuestListProps) {
         const completed = questProgress?.completed ?? false;
 
         return (
-          <li key={quest.id} className="rounded border border-slate-800 bg-slate-900/60 p-3">
+          <li
+            key={quest.id}
+            className="rounded-2xl border border-white/10 bg-night/40 p-3.5 backdrop-blur-md"
+          >
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <span className="font-semibold">
+              <span className="font-display text-sm font-bold text-frost">
                 {completed && "✓ "}
                 {quest.title}
               </span>
-              <span className="text-xs text-slate-400">
-                {t.window}: {quest.window} · {t.reward}: {quest.reward.xp}
+              <span className="text-xs text-ice/55">
+                {quest.window} · {quest.reward.xp} {t.reward}
               </span>
             </div>
             <div
-              className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-800"
+              className="mt-2.5 h-1.5 w-full overflow-hidden rounded-full bg-white/10"
               role="progressbar"
               aria-valuenow={pct}
               aria-valuemin={0}
@@ -40,12 +43,12 @@ export default function QuestList({ quests, progress }: QuestListProps) {
               aria-label={`${t.progress}: ${quest.title}`}
             >
               <div
-                className={`h-full rounded-full ${completed ? "bg-emerald-500" : "bg-indigo-500"}`}
+                className={`h-full rounded-full transition-[width] ${completed ? "bg-frost" : "bg-glacier"}`}
                 style={{ width: `${pct}%` }}
               />
             </div>
-            <p className="mt-1 text-xs text-slate-400">
-              {t.progress}: {count}/{quest.target}
+            <p className="mt-1.5 text-right font-display text-xs font-semibold text-ice/50">
+              {count}/{quest.target}
             </p>
           </li>
         );
