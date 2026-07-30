@@ -72,7 +72,19 @@ export default function MarketPage() {
   const anyBuyInFlight = buy.isSubmitting || buy.isConfirming;
 
   return (
-    <main className="mx-auto max-w-3xl py-4">
+    <main className="mx-auto max-w-3xl py-6">
+      <div aria-hidden className="fixed inset-0 -z-10">
+        <Image
+          src="/images/background/bg.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-top"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-night/50 via-night/80 to-night" />
+      </div>
+
       {/* Kartu ber-art potret, pola sama dengan /daily dan /quests. Overlay
           gelap wajib: separuh bawah art itu salju terang. */}
       <section className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
@@ -89,7 +101,7 @@ export default function MarketPage() {
         <div className="relative space-y-5 px-4 py-7 sm:px-6">
           <header className="space-y-2 text-center">
             <h1 className="font-display text-2xl font-bold tracking-tight text-frost sm:text-3xl">
-              {t.title} <span aria-hidden>🛍️</span>
+              {t.title}
             </h1>
             <p className="mx-auto max-w-sm text-sm leading-relaxed text-frost/65">{t.subtitle}</p>
           </header>

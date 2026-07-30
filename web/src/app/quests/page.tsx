@@ -13,7 +13,19 @@ export default function QuestsPage() {
   const { quests, progress, playerId, error } = useQuests();
 
   return (
-    <main className="mx-auto max-w-lg py-4">
+    <main className="mx-auto max-w-xl py-6">
+      <div aria-hidden className="fixed inset-0 -z-10">
+        <Image
+          src="/images/background/bg.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-top"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-night/50 via-night/80 to-night" />
+      </div>
+
       {/* Kartu ber-art potret, pola sama dengan /daily. Overlay gelap wajib:
           separuh bawah art itu salju terang, teks frost tidak akan terbaca. */}
       <section className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
@@ -22,14 +34,14 @@ export default function QuestsPage() {
           alt=""
           fill
           priority
-          sizes="(max-width: 640px) 100vw, 512px"
+          sizes="(max-width: 640px) 100vw, 576px"
           className="object-cover object-center"
         />
         <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-night/55 via-night/70 to-night/90" />
 
         <div className="relative space-y-5 px-4 py-7 sm:px-6">
           <h1 className="text-center font-display text-2xl font-bold tracking-tight text-frost sm:text-3xl">
-            {t.title} <span aria-hidden>🎯</span>
+            {t.title}
           </h1>
 
           {error && (

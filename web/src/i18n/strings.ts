@@ -83,6 +83,11 @@ export interface LocaleStrings {
     loading: string;
     noPlayerYet: string;
     table: Record<string, string>;
+    windowDaily: string;
+    windowWeekly: string;
+    windowSeason: string;
+    groupDone: string;
+    done: string;
   };
   market: Record<string, string>;
   plaza: Record<string, string>;
@@ -311,6 +316,12 @@ export const strings = {
         reward: "XP",
         progress: "Progress",
       },
+      // Label grup per window quest (data window-nya sendiri datang dari server).
+      windowDaily: "Harian",
+      windowWeekly: "Mingguan",
+      windowSeason: "Musim",
+      groupDone: "selesai",
+      done: "Selesai",
     },
     market: {
       title: "Marketplace",
@@ -596,6 +607,12 @@ export const strings = {
         reward: "XP",
         progress: "Progress",
       },
+      // Group labels per quest window (the window data itself comes from the server).
+      windowDaily: "Daily",
+      windowWeekly: "Weekly",
+      windowSeason: "Season",
+      groupDone: "done",
+      done: "Done",
     },
     market: {
       title: "Marketplace",

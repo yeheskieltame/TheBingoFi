@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import ModeDialog from "@/components/ModeDialog";
+import Dialog from "@/components/Dialog";
 import { useLocale } from "@/hooks/useLocale";
 import { useRoom } from "@/hooks/useRoom";
 import { strings } from "@/i18n/strings";
@@ -246,7 +246,7 @@ export default function Home() {
       </section>
 
       {/* Opsi tiap mode: modal (motion), muncul saat kartunya diklik. */}
-      <ModeDialog
+      <Dialog
         open={openMode === "quick"}
         title={t.quickMatch.title}
         description={t.quickMatch.desc}
@@ -285,9 +285,9 @@ export default function Home() {
             {t.playNow}
           </button>
         </div>
-      </ModeDialog>
+      </Dialog>
 
-      <ModeDialog
+      <Dialog
         open={openMode === "bot"}
         title={t.vsBot.title}
         description={t.vsBot.desc}
@@ -339,9 +339,9 @@ export default function Home() {
             {t.playNow}
           </button>
         </div>
-      </ModeDialog>
+      </Dialog>
 
-      <ModeDialog
+      <Dialog
         open={openMode === "create"}
         title={t.createRoom.title}
         description={t.createRoom.desc}
@@ -430,9 +430,9 @@ export default function Home() {
             {t.createRoom.submit}
           </button>
         </form>
-      </ModeDialog>
+      </Dialog>
 
-      <ModeDialog
+      <Dialog
         open={openMode === "open"}
         title={t.roomBrowser.title}
         description={t.roomBrowser.desc}
@@ -483,7 +483,7 @@ export default function Home() {
             </ul>
           )}
         </div>
-      </ModeDialog>
+      </Dialog>
 
       {/* Gabung via kode: baris tipis, tanpa kartu. */}
       <form onSubmit={handleJoinByCode} className="mx-auto flex max-w-md items-center gap-2">
