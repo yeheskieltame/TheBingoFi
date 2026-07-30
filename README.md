@@ -17,12 +17,14 @@ flowchart LR
     end
 
     subgraph BE["server/ — Node.js (Railway/VPS)"]
-        RT["realtime/ Socket.IO<br/><i>room, draft, match, redaksi board</i>"]
-        HTTP["api/ HTTP JSON + CORS<br/><i>daily, leaderboard, quests</i>"]
-        Engine["engine/ (pure TS)<br/><i>board, garis, turn, menang</i>"]
-        Quest["quest/ + daily/<br/><i>event → quest, seeded challenge</i>"]
+        RT["realtime/ Socket.IO<br/><i>room 2–5, quick match, draft,<br/>match, skill, plaza chat, redaksi board</i>"]
+        HTTP["api/ HTTP JSON + CORS<br/><i>daily, leaderboard, quests, metadata NFT</i>"]
+        Engine["engine/ (pure TS)<br/><i>board, garis, turn, menang, 5 skill + Nullify</i>"]
+        Bot["bot/ (pure TS)<br/><i>AI 10 level, epsilon-greedy</i>"]
+        Quest["quest/ + daily/<br/><i>event → quest, bot ladder, seeded challenge</i>"]
         Chain["chain/ (viem, read-only)<br/><i>katalog, verifikasi loadout</i>"]
         RT --> Engine
+        RT --> Bot
         RT --> Quest
         HTTP --> Quest
         RT --> Chain
@@ -40,7 +42,7 @@ flowchart LR
 
     Hooks == "Socket.IO (typed protocol)<br/>+ HTTP JSON" ==> RT
     Hooks ==> HTTP
-    Wallet -- "tx: Marketplace.buy()<br/>read: sales, balanceOf, uri" --> Market
+    Wallet -- "tx: Marketplace.buy()<br/>read: priceOf, sales, balanceOf, uri" --> Market
     Wallet -.-> Collection
     Chain -. "read-only RPC:<br/>getSkill, balanceOfBatch" .-> Registry
     Chain -.-> Collection
@@ -77,7 +79,7 @@ unit @0.01 ETH (Nullify, super rare). Machine-readable: `contracts/deployments/9
 
 ```
 contracts/   Solidity (Foundry) — Registry, Factory, Collection (ERC-1155), Marketplace
-server/      Backend (Node.js + TS) — engine pure, realtime Socket.IO, HTTP API, chain reader
+server/      Backend (Node.js + TS) — engine pure (+ 5 skill), bot AI 10 level, realtime Socket.IO (room/quick match/plaza), HTTP API, chain reader
 web/         Web client (Next.js + TS + Tailwind) — kerangka fungsional, styling oleh tim UI
 ```
 
@@ -93,7 +95,7 @@ pnpm --filter @thebingofi/web dev             # Next.js di :3000
 
 ```bash
 pnpm test:contracts   # forge test (52 test, coverage 100%)
-pnpm test:server      # node --test (94 test: engine, daily, quest, realtime, http, chain)
+pnpm test:server      # node --test (217 test: engine, skill, bot, daily, quest, realtime, plaza, http, chain)
 ```
 
 ## API untuk FE

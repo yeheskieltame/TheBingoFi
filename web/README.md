@@ -130,15 +130,23 @@ Existing (tidak diubah kontraknya, lihat `server/API.md`):
 Existing (tidak diubah logic-nya, hanya ditambah action baru — lihat di
 bawah):
 
-- `hooks/useRoom.ts` — state machine utama `/play`. **Ditambah** 2 action
-  baru dibanding sebelumnya: `linkWallet(address, signMessage)` (flow
-  `wallet:nonce` -> sign -> `wallet:link`, `signMessage` di-inject dari
-  `useWallet` supaya hook ini tetap tidak mengimpor wagmi) dan
-  `setLoadout(skillIds)` (`loadout:set`). `createRoom` sekarang menerima
-  `mode?: "casual" | "standard"` (dulu selalu casual). Semua action lama
-  (`joinRoom`/`draft:start`/`match:call`/`skill:use`/dst) tidak berubah.
-- `hooks/useDraftBoard.ts`, `hooks/useDailyChallenge.ts`,
-  `hooks/useQuests.ts`, `hooks/useStoredPlayerId.ts` — tidak diubah.
+- `hooks/useRoom.ts` — state machine utama `/play`. Actions:
+  `createRoom(nickname, mode?, { maxPlayers?, isPublic? })`, `joinRoom`,
+  **`quickMatch(nickname, size)`** (`room:quick` — auto-join/auto-buat room
+  publik 2–5, draft mulai otomatis saat penuh), **`createBotRoom(nickname,
+  level)`** (`room:createBot` — 1v1 vs bot Lv1–10, langsung draft),
+  **`listRooms()`** (`room:list`, Promise-based untuk Room Browser di
+  landing), `linkWallet(address, signMessage)` (flow `wallet:nonce` → sign →
+  `wallet:link`), `setLoadout(skillIds)`, plus semua action lama
+  (`draft:start`/`match:call`/`skill:use`/dst). State menyimpan `entryKind`
+  (`"create" | "join" | "quick" | "bot"`) — dipakai "Main Lagi" untuk
+  mengulang mode yang sama dan Lobby untuk tahu room quick match (tanpa
+  tombol host).
+- `hooks/useDraftBoard.ts` — susun board: `selectCell` (klik 2 sel untuk
+  tukar) dan **`swapCells(a, b)`** (dipakai juga drag & drop di
+  `DraftBoard`).
+- `hooks/useDailyChallenge.ts`, `hooks/useQuests.ts`,
+  `hooks/useStoredPlayerId.ts` — tidak diubah.
 
 ## Cara jalanin
 
@@ -171,13 +179,19 @@ RPC/deployment lain.
 
 ## Halaman
 
-- `/` — landing/hub: nickname, pilih mode room (casual/standard) + "Buat
-  Room" (→ `/play`), form "Gabung via Kode" (→ `/play?code=...`), link ke
-  `/daily`, `/quests`, `/market`.
-- `/play` — seluruh flow room: lobby (+ link wallet & loadout picker kalau
-  mode `standard`) → draft → playing (board, skill panel, giliran) →
-  finished (+ "Main Lagi"). Baca `?code=`/`?mode=` dari URL. Lihat
-  `hooks/useRoom.ts`.
+- `/` — landing/hub: nickname + **4 kartu mode**: Quick Match (pilih 2–5
+  pemain → `/play?quick=N`), Room Terbuka (browser room publik via
+  `listRooms()`, auto-refresh 10s, join → `/play?code=...`), Buat Room
+  (target pemain 2–5, casual/standard, publik/privat), VS Bot (grid level
+  1–10 → `/play?bot=N`), plus form "Gabung via Kode".
+- `/play` — seluruh flow room: lobby ("X/Y pemain", badge Publik/Privat/BOT,
+  quick match auto-start tanpa tombol host; + link wallet & loadout picker
+  kalau mode `standard`) → draft (klik 2 sel ATAU drag & drop) → playing
+  (**board sendiri = number picker**: klik sel yang belum ter-mark saat
+  giliranmu — tidak ada grid 1–25 terpisah; huruf **B-I-N-G-O** per garis
+  lengkap, besar untuk diri sendiri + compact per pemain; skill panel,
+  banner Nullify) → finished (+ "Main Lagi" mengulang mode yang sama). Baca
+  `?code=`/`?mode=`/`?quick=`/`?bot=` dari URL. Lihat `hooks/useRoom.ts`.
 - `/daily` — Daily Challenge: susun board (reuse `DraftBoard`), main, lihat
   skor + share card + leaderboard.
 - `/quests` — katalog quest + progress bar per quest.
@@ -219,11 +233,12 @@ tidak (payload `PlazaMessage` tidak membawa address, lihat server/API.md).
 |---|---|---|
 | `Header` | (tidak ada — baca wagmi/locale langsung) | semua halaman (`app/layout.tsx`) |
 | `Providers` | `children` | `app/layout.tsx` (WagmiProvider + QueryClientProvider) |
-| `Lobby` | `code, players, hostId, mode, playerId, isHost, canStart, pending, onStartDraft, onLeave, connectedWalletAddress?, walletLinkPending?, onLinkWallet?, loadoutPicker?` | `/play` (fase lobby) |
-| `PlayerList` | `players, hostId, mode?` | `Lobby`, `/play` (fase draft) |
+| `Lobby` | `code, players, hostId, mode, maxPlayers, visibility, isQuickMatch, playerId, isHost, canStart, pending, onStartDraft, onLeave, connectedWalletAddress?, walletLinkPending?, onLinkWallet?, loadoutPicker?` | `/play` (fase lobby) |
+| `PlayerList` | `players, hostId, mode?` (render badge BOT utk `isBot`) | `Lobby`, `/play` (fase draft) |
 | `LoadoutPicker` | `catalog, ownedSkillIds, selected, savedLoadout, catalogLoading, catalogError, saving, onToggle, onSave` | `Lobby` (slot `loadoutPicker`, mode standard) |
-| `DraftBoard` | `numbers, selectedIndex, onSelectCell, onShuffle, valid, validationError?` | `/play` (fase draft), `/daily` |
-| `MatchBoard` | `view (MatchView), playerId, onCall, pending, skillSelection?, onSelectSkillCell?` | `/play` (fase playing) |
+| `DraftBoard` | `numbers, selectedIndex, onSelectCell, onSwapCells, onShuffle, valid, validationError?` (klik 2 sel + drag & drop) | `/play` (fase draft), `/daily` |
+| `MatchBoard` | `view (MatchView), playerId, onCall, pending, skillSelection?, onSelectSkillCell?` — board sendiri = number picker; huruf BINGO via `BingoLetters` | `/play` (fase playing) |
+| `BingoLetters` | `count, compact?` (1 garis = B ... 5 = BINGO) | `MatchBoard` |
 | `SkillPanel` | `view (MatchView), viewerPlayerId, pending, selection, resolutions, onActivateSkill, onCancelSelection, onNullify, onPass` | `/play` (fase playing) |
 | `MatchResult` | `winnerId, reason?, players, onBackToLanding, onPlayAgain?` | `/play` (fase finished) |
 | `QuestNotifications` | `notifications (QuestCompletedPayload[])` | `/play` |
