@@ -32,24 +32,36 @@ export function useDraftBoard() {
     setSelectedIndex(null);
   }, []);
 
-  /** Click a cell: first click selects it, second click swaps it with the first (clicking the same cell twice deselects). */
-  const selectCell = useCallback((index: number) => {
-    setSelectedIndex((prev) => {
-      if (prev === null) return index;
-      if (prev === index) return null;
-
-      setNumbers((prevNumbers) => {
-        const next = prevNumbers.slice();
-        const a = next[prev]!;
-        const b = next[index]!;
-        next[prev] = b;
-        next[index] = a;
-        return next;
-      });
-
-      return null;
+  /** Swap the numbers at two cell indexes (used by click-to-swap and drag & drop). */
+  const swapCells = useCallback((a: number, b: number) => {
+    if (a === b || a < 0 || b < 0 || a >= BOARD_SIZE || b >= BOARD_SIZE) return;
+    setNumbers((prevNumbers) => {
+      const next = prevNumbers.slice();
+      [next[a], next[b]] = [next[b]!, next[a]!];
+      return next;
     });
+    setSelectedIndex(null);
   }, []);
 
-  return { numbers, selectedIndex, validation, shuffle, selectCell };
+  /**
+   * Click a cell: first click selects it, second click swaps it with the
+   * first (clicking the same cell twice deselects). NOTE: the swap must NOT
+   * be queued from inside the setSelectedIndex updater - updaters are pure
+   * and StrictMode double-invokes them, which queued the swap twice and
+   * cancelled it out.
+   */
+  const selectCell = useCallback(
+    (index: number) => {
+      if (selectedIndex === null) {
+        setSelectedIndex(index);
+      } else if (selectedIndex === index) {
+        setSelectedIndex(null);
+      } else {
+        swapCells(selectedIndex, index);
+      }
+    },
+    [selectedIndex, swapCells],
+  );
+
+  return { numbers, selectedIndex, validation, shuffle, selectCell, swapCells };
 }

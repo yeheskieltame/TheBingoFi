@@ -147,7 +147,7 @@ export const strings = {
       },
       draft: {
         title: "Susun Board",
-        instructions: "Klik dua sel untuk menukar posisi angka.",
+        instructions: "Klik dua sel atau drag & drop untuk menukar posisi angka.",
         shuffle: "Acak",
         lockBoard: "Kunci Board",
         locked: "Board sudah dikunci, menunggu pemain lain...",
@@ -385,7 +385,7 @@ export const strings = {
       },
       draft: {
         title: "Arrange Board",
-        instructions: "Click two cells to swap their positions.",
+        instructions: "Click two cells or drag & drop to swap their positions.",
         shuffle: "Shuffle",
         lockBoard: "Lock Board",
         locked: "Board locked, waiting for other players...",

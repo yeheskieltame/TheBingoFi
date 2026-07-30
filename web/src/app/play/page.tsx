@@ -190,6 +190,7 @@ function PlayScreen() {
                 numbers={draft.numbers}
                 selectedIndex={draft.selectedIndex}
                 onSelectCell={draft.selectCell}
+                onSwapCells={draft.swapCells}
                 onShuffle={draft.shuffle}
                 valid={draft.validation.valid}
                 validationError={draft.validation.error}
