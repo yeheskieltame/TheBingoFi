@@ -116,8 +116,9 @@ export default function Header() {
             aria-label={t.nav.langSwitch}
             title={t.nav.langSwitch}
           >
-            {/* Flag emoji: di Windows Chrome bendera tidak dirender (jadi huruf "GB"/"ID"),
-                makanya kode bahasa tetap ditampilkan di sebelahnya, bukan hanya bendera. */}
+            {/* Menandakan bahasa yang SEDANG aktif; aksinya ("ganti ke ...") ada di
+                aria-label/title. Flag emoji tidak dirender di Windows Chrome (jadi
+                huruf "GB"/"ID"), makanya kode bahasa tetap ditampilkan di sebelahnya. */}
             <span aria-hidden className="text-base leading-none">
               {t.nav.langFlag}
             </span>

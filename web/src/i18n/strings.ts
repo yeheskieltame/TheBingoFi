@@ -118,9 +118,10 @@ export const strings = {
       plaza: "Plaza",
       profile: "Profilku",
       profileConnectHint: "Connect wallet dulu untuk lihat profilmu",
-      // langToggle/langFlag menunjuk bahasa TUJUAN (yang aktif kalau tombol diklik).
-      langToggle: "EN",
-      langFlag: "🇬🇧",
+      // langToggle/langFlag = bahasa yang SEDANG aktif (penanda, bukan tujuan).
+      // Aksinya dijelaskan lewat langSwitch di aria-label/title tombol.
+      langToggle: "ID",
+      langFlag: "🇮🇩",
       langSwitch: "Ganti bahasa ke English",
     },
     wallet: {
@@ -429,9 +430,10 @@ export const strings = {
       plaza: "Plaza",
       profile: "My Profile",
       profileConnectHint: "Connect a wallet first to see your profile",
-      // langToggle/langFlag point at the TARGET language (what clicking switches to).
-      langToggle: "ID",
-      langFlag: "🇮🇩",
+      // langToggle/langFlag = the language CURRENTLY active (an indicator, not a
+      // target). What clicking does is spelled out by langSwitch in aria-label/title.
+      langToggle: "EN",
+      langFlag: "🇬🇧",
       langSwitch: "Switch language to Indonesian",
     },
     wallet: {
