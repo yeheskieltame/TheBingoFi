@@ -3,6 +3,9 @@
 import { useMemo, useState } from "react";
 import type { Address } from "viem";
 
+import { LuCopy, LuCheck, LuSend } from "react-icons/lu";
+import { FaXTwitter } from "react-icons/fa6";
+
 import ProfileSkillCard from "@/components/ProfileSkillCard";
 import { useLocale } from "@/hooks/useLocale";
 import { useMarketplaceSales } from "@/hooks/useMarketplaceSales";
@@ -70,53 +73,82 @@ export default function ProfileView({ address }: ProfileViewProps) {
   }
 
   return (
-    <main className="mx-auto max-w-2xl space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-bold text-white">{t.heading}</h1>
-        <p className="font-mono text-sm text-slate-400" title={address}>
-          {truncateAddress(address)}
-        </p>
-        <p className="text-sm text-slate-300">
-          {t.totalItemsLabel}: <span className="font-semibold text-white">{totalItems.toString()}</span>
-        </p>
-      </div>
+    <main className="mx-auto max-w-3xl space-y-6 py-6">
+      {/* Kartu identitas: ini "kartu nama" yang dibagikan keluar, jadi alamat,
+          jumlah koleksi, dan tombol share duduk dalam satu blok. */}
+      <section className="rounded-3xl border border-white/10 bg-night/55 p-6 backdrop-blur-md">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="space-y-1">
+            <h1 className="font-display text-2xl font-bold tracking-tight text-frost sm:text-3xl">{t.heading}</h1>
+            <p className="font-mono text-sm text-ice/50" title={address}>
+              {truncateAddress(address)}
+            </p>
+          </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={handleCopyLink}
-          className="rounded border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
-        >
-          {copied ? t.linkCopied : t.copyLink}
-        </button>
-        <button
-          type="button"
-          onClick={handleShareX}
-          className="rounded border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
-        >
-          {t.shareX}
-        </button>
-        <button
-          type="button"
-          onClick={handleShareTelegram}
-          className="rounded border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
-        >
-          {t.shareTelegram}
-        </button>
-      </div>
+          <div className="text-right">
+            <p className="font-display text-3xl font-bold leading-none text-frost">{totalItems.toString()}</p>
+            <p className="text-xs uppercase tracking-wide text-ice/45">{t.totalItemsLabel}</p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 font-display text-sm font-semibold text-ice transition-colors hover:border-white/35 hover:text-frost"
+          >
+            {copied ? <LuCheck aria-hidden className="size-4" /> : <LuCopy aria-hidden className="size-4" />}
+            {copied ? t.linkCopied : t.copyLink}
+          </button>
+          <button
+            type="button"
+            onClick={handleShareX}
+            className="inline-flex items-center gap-2 rounded-full bg-frost px-4 py-2 font-display text-sm font-bold text-glacier-ink transition-opacity hover:opacity-85"
+          >
+            <FaXTwitter aria-hidden className="size-4" />
+            {t.shareX}
+          </button>
+          <button
+            type="button"
+            onClick={handleShareTelegram}
+            className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 font-display text-sm font-semibold text-ice transition-colors hover:border-white/35 hover:text-frost"
+          >
+            <LuSend aria-hidden className="size-4" />
+            {t.shareTelegram}
+          </button>
+        </div>
+      </section>
 
       <section className="space-y-3">
-        {catalog.loading && <p className="text-sm text-slate-400">{t.loading}</p>}
+        {catalog.loading && (
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 4 }, (_, index) => (
+              <li
+                key={index}
+                aria-hidden
+                className="aspect-[3/4] animate-pulse rounded-2xl border border-white/10 bg-night/55"
+              />
+            ))}
+          </ul>
+        )}
+
         {catalog.error && (
-          <p role="alert" className="rounded border border-red-600 bg-red-950/60 px-3 py-2 text-sm text-red-300">
+          <p
+            role="alert"
+            className="rounded-2xl border border-red-500/40 bg-red-950/60 px-4 py-2.5 text-sm text-red-200 backdrop-blur-md"
+          >
             {t.error}: {catalog.error}
           </p>
         )}
 
-        {catalog.catalog && owned.length === 0 && <p className="text-sm text-slate-500">{t.empty}</p>}
+        {catalog.catalog && owned.length === 0 && (
+          <p className="rounded-2xl border border-white/10 bg-night/45 px-4 py-8 text-center text-sm text-ice/50 backdrop-blur-md">
+            {t.empty}
+          </p>
+        )}
 
         {owned.length > 0 && (
-          <ul className="space-y-2">
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {owned.map((entry) => {
               const sale = sales.sales.get(entry.skillId);
               return (
