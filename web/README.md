@@ -53,16 +53,25 @@ bukan fetch/socket state.
 
 - `lib/chain.ts` — **satu-satunya tempat** definisi chain GIWA Sepolia
   (viem `defineChain`, id 91342), address kontrak (`contractAddresses` —
-  default ke deployment live `contracts/deployments/91342.json`, override
-  via `NEXT_PUBLIC_*_ADDRESS`), ABI (`marketplaceAbi`/`skillCollectionAbi`/
+  default di-import LANGSUNG dari `contracts/deployments/91342.json` (relative
+  import, sama seperti ABI di bawah) supaya tidak pernah drift dari deploy
+  terakhir — redeploy berikutnya otomatis ke-pick up tanpa ubah kode FE;
+  override via `NEXT_PUBLIC_*_ADDRESS`), ABI (`marketplaceAbi`/`skillCollectionAbi`/
   `skillFactoryAbi`/`skillRegistryAbi`, di-import langsung dari
   `contracts/abi/*.json` — lihat `contracts/README.md`), `publicClient`
-  (viem, read-only, dipakai hooks katalog/ownership/sales — tidak butuh
+  (viem, read-only, dipakai hooks katalog/ownership/sales/harga — tidak butuh
   wallet), `wagmiConfig` (injected connector ONLY, tanpa WalletConnect/
   cloud projectId, `ssr: true` supaya SSR Next tidak hydration-mismatch
   dengan wallet yang auto-reconnect di browser), plus helper
   `truncateAddress`/`explorerAddressUrl`/`explorerTxUrl`/`decodeEffectType`
   (bytes32 on-chain -> string "WILD_DAUB" dst).
+- `lib/skillTier.ts` — klasifikasi tier kelangkaan skill murni dari
+  `maxSupply` on-chain (`tierForMaxSupply`: ≤10 Super Rare, ≤100 Rare, ≤500
+  Uncommon, sisanya Common) + map class Tailwind per tier (`TIER_BORDER_CLASS`/
+  `TIER_BADGE_CLASS`) — dipakai bareng oleh `/market`, `/plaza` (kartu skill
+  di chat), `/profile` (koleksi) lewat `SkillTierBadge`. Bukan konsep
+  on-chain, murni hook visual "premium feel" (task brief) — tim UI bebas
+  re-skin class-nya.
 - `lib/locale.ts` — reactive locale store (id/en) di localStorage, pub-sub
   kecil (bukan React Context) supaya `hooks/useLocale.ts` bisa re-render
   semua consumer begitu language switcher (Header) diklik.
@@ -87,12 +96,34 @@ Existing (tidak diubah kontraknya, lihat `server/API.md`):
   loadout picker (`/play`) dan `/market`.
 - `hooks/useSkillOwnership.ts` — `SkillCollection.balanceOfBatch(owner,
   skillIds)`, no-op (map kosong) kalau `owner` undefined/`skillIds` kosong.
+  Dipakai `/play` (loadout picker), `/market` (saldo kamu), `/plaza`
+  (skill yang bisa dilampirkan), `/profile/[address]` (koleksi).
 - `hooks/useMarketplaceSales.ts` — `Marketplace.sales(skillId)` per skill
-  (price/maxSupply/minted/active) — dipakai `/market`.
+  (Marketplace v2: `basePrice`/`maxSupply`/`minted`/`active`/`lastPurchaseAt`)
+  — stok + harga dasar (BUKAN quote pembelian, lihat `useSkillPrices.ts`).
+  Dipakai `/market`, `/plaza` (tier dari `maxSupply`), `/profile/[address]`.
+- `hooks/useSkillPrices.ts` — `Marketplace.priceOf(skillId)`, SATU-SATUNYA
+  sumber quote harga (contracts/README.md: "FE HARUS quote lewat priceOf,
+  jangan pernah hitung harga manual dari basePrice" — harga bergerak dengan
+  scarcity ramp + demand decay). Refetch tiap 30 detik selama halaman
+  terbuka + `reload()` manual (dipanggil `/market` setelah tx beli confirm).
+- `hooks/useSkillMetadata.ts` — fetch `GET <NEXT_PUBLIC_SERVER_URL>/metadata/
+  <id>.json` (server/API.md) per skill — name/description/image/
+  animation_url (CONCEPT.md §3 "identitas premium"). Murni dekoratif: id
+  yang gagal/404/503 diam-diam absen dari map, caller fallback ke nama dari
+  `effectNames` (i18n) — tidak pernah jadi error halaman.
 - `hooks/useBuySkill.ts` — wraps `useWriteContract`+
   `useWaitForTransactionReceipt` jadi satu status pembelian
   (`isSubmitting`/`isConfirming`/`isConfirmed`/`error`/`hash`) untuk
-  `Marketplace.buy(skillId, amount)`.
+  `Marketplace.buy(skillId, amount)`. `buy(skillId, amount, quotedUnitPriceWei)`
+  mengirim `msg.value = quote * amount * 1.02` (buffer 2% — kontrak
+  auto-refund kelebihan, CEI, lihat contracts/README.md's Dynamic Pricing).
+- `hooks/usePlaza.ts` — state Plaza chat global (server/API.md's "Plaza
+  chat"): connect/disconnect socket di mount/unmount halaman `/plaza`
+  (singleton yang sama dengan `useRoom.ts`, lihat `lib/socket.ts`),
+  `plaza:history` sekali saat connect, listen `plaza:message` (broadcast ke
+  SEMUA socket termasuk pengirim sendiri — jadi tidak perlu optimistic
+  local append), `send(nickname, text, skillId?)` untuk `plaza:send`.
 - `hooks/useLocale.ts` — baca `lib/locale.ts` via `useSyncExternalStore`
   (SSR-safe, snapshot server selalu "id").
 
@@ -133,9 +164,10 @@ NEXT_PUBLIC_SERVER_URL=http://localhost:3001
 
 `NEXT_PUBLIC_RPC_URL`/`NEXT_PUBLIC_REGISTRY_ADDRESS`/
 `NEXT_PUBLIC_FACTORY_ADDRESS`/`NEXT_PUBLIC_COLLECTION_ADDRESS`/
-`NEXT_PUBLIC_MARKETPLACE_ADDRESS` opsional — default sudah hardcode ke
-deployment live GIWA Sepolia (lihat `lib/chain.ts` + `.env.example`), hanya
-perlu diisi untuk target RPC/deployment lain.
+`NEXT_PUBLIC_MARKETPLACE_ADDRESS` opsional — default dibaca langsung dari
+`contracts/deployments/91342.json` (lihat `lib/chain.ts` + `.env.example`),
+otomatis ikut redeploy terbaru; hanya perlu diisi untuk target
+RPC/deployment lain.
 
 ## Halaman
 
@@ -149,14 +181,37 @@ perlu diisi untuk target RPC/deployment lain.
 - `/daily` — Daily Challenge: susun board (reuse `DraftBoard`), main, lihat
   skor + share card + leaderboard.
 - `/quests` — katalog quest + progress bar per quest.
-- `/market` — katalog skill on-chain + harga/stok (`Marketplace.sales`) +
-  saldo kamu (`SkillCollection.balanceOf`) + beli (`Marketplace.buy`).
+- `/market` — katalog skill on-chain + harga dinamis (`Marketplace.priceOf`,
+  refetch berkala + badge "Diskon x%"/"Harga naik (laris)" vs `basePrice`) +
+  stok dengan progress bar + tier kelangkaan (`lib/skillTier.ts`, dari
+  `maxSupply`) + metadata off-chain (`GET /metadata/:id.json` — name/
+  description, `image`/`animation_url` dengan fallback inisial lewat
+  `SkillMedia`) + saldo kamu (`SkillCollection.balanceOfBatch`) + beli
+  (`Marketplace.buy`, kirim quote×amount×1.02, kelebihan auto-refund).
   Tanpa wallet: katalog tetap kelihatan, tombol beli nonaktif + ajakan
-  connect.
+  connect. Sold out → tombol disabled.
+- `/plaza` — chat sosial global (CONCEPT.md §7.4b), realtime via
+  `plaza:send`/`plaza:history`/`plaza:message` (server/API.md). Guest play
+  penuh untuk chat teks (nickname dari storage, diminta inline kalau
+  kosong); wallet connect membuka dropdown "lampirkan skill" (skill yang
+  DIMILIKI) — pesan dengan `skillId` dirender sebagai kartu kecil (nama +
+  tier), klik → `/market`. Rate limit server ditampilkan sebagai error
+  banner.
+- `/profile/[address]` — profil publik shareable (CONCEPT.md §7.4b):
+  validasi address (viem `isAddress`, invalid → 404 lewat `notFound()`),
+  koleksi skill on-chain (`balanceOfBatch` seluruh katalog) + tier badge +
+  total item, tombol share (copy link, X, Telegram — teks "Cek koleksi
+  skill TheBingoFi-ku"). `generateMetadata` per address (title/description
+  dinamis) — Server Component (`page.tsx`) + Client Component
+  (`components/ProfileView.tsx`) untuk baca on-chain/`window`/`navigator`.
 
 Header (semua halaman, `components/Header.tsx`, dipasang di
-`app/layout.tsx`): link antar halaman, tombol Connect/Disconnect + address
-terpotong + peringatan jaringan salah, language switcher (id/en).
+`app/layout.tsx`): link antar halaman (termasuk Plaza), link "Profilku" →
+`/profile/<wallet>` (disabled kalau belum connect), tombol
+Connect/Disconnect + address terpotong + peringatan jaringan salah,
+language switcher (id/en). Nickname pemain yang sudah `wallet:link` juga
+jadi link ke profilnya di `/play` lobby (`PlayerList`/`Lobby`) — `/plaza`
+tidak (payload `PlazaMessage` tidak membawa address, lihat server/API.md).
 
 ## Komponen (`src/components/`)
 
@@ -175,7 +230,13 @@ terpotong + peringatan jaringan salah, language switcher (id/en).
 | `DailyResult` | `number, score, callsToBingo, shareCard, copied, onCopy` | `/daily` |
 | `DailyLeaderboard` | `entries (DailyLeaderboardEntry[])` | `/daily` |
 | `QuestList` | `quests, progress` | `/quests` |
-| `SkillMarketCard` | `entry, sale, ownedBalance, amount, onAmountChange, walletConnected, buyDisabled, buyStatus, buyError, txHash, onBuy` | `/market` |
+| `SkillMarketCard` | `entry, sale, currentPrice, priceLoading, metadata, ownedBalance, amount, onAmountChange, walletConnected, buyDisabled, buyStatus, buyError, txHash, onBuy` | `/market` |
+| `SkillMedia` | `imageUrl?, animationUrl?, label` | `SkillMarketCard` — art slot dengan fallback inisial (`onError`) |
+| `SkillTierBadge` | `tier` | `SkillMarketCard`, `PlazaSkillCard`, `ProfileSkillCard` |
+| `PlazaMessageList` | `messages, skillName, skillTier` | `/plaza` |
+| `PlazaSkillCard` | `skillId, name, tier` | `PlazaMessageList` (pesan dengan `skillId`) |
+| `ProfileView` | `address` | `app/profile/[address]/page.tsx` (Client Component body) |
+| `ProfileSkillCard` | `entry, balance, tier` | `ProfileView` |
 
 Semua komponen di atas (kecuali `Header`/`Providers`, yang genuinely
 cross-cutting) tetap "dumb": tidak ada fetch/socket langsung, cuma
@@ -188,7 +249,7 @@ halaman/hook manapun.
 
 - `import type { ... } from "@thebingofi/server/protocol"` — semua tipe
   event Socket.IO (`ClientToServerEvents`, `ServerToClientEvents`,
-  `LobbyView`, `MatchView`, dst).
+  `LobbyView`, `MatchView`, `PlazaMessage`, `SkillMetadataResponse`, dst).
 - `import { ... } from "@thebingofi/server/engine"` — fungsi/konstanta pure
   engine (`validateBoard`, `BOARD_SIZE`, `MIN_NUMBER`, `MAX_NUMBER`,
   `MIN_PLAYERS`, `WILD_DAUB`/`CELL_SWAP`/dst, `markedCellsFor`).

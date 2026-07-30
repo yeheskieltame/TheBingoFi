@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { LobbyPlayerView, LobbyView } from "@thebingofi/server/protocol";
 
 import { useLocale } from "@/hooks/useLocale";
@@ -10,7 +11,13 @@ export interface PlayerListProps {
   readonly mode?: LobbyView["mode"];
 }
 
-/** Dumb table of room players: nickname, host flag, connection, board-submit status (+ wallet/loadout in "standard" mode). Used by Lobby and /play's draft phase. */
+/**
+ * Dumb table of room players: nickname, host flag, connection, board-submit
+ * status (+ wallet/loadout in "standard" mode). Used by Lobby and /play's
+ * draft phase. Nickname links to `/profile/<wallet>` when the player has one
+ * linked (`wallet` is public per server/API.md, regardless of room mode) -
+ * plain text otherwise, since there's no address to link to.
+ */
 export default function PlayerList({ players, hostId, mode }: PlayerListProps) {
   const locale = useLocale();
   const t = strings[locale].play.lobby;
@@ -43,7 +50,15 @@ export default function PlayerList({ players, hostId, mode }: PlayerListProps) {
       <tbody>
         {players.map((player) => (
           <tr key={player.playerId} className="border-b border-slate-900">
-            <td className="py-1 pr-2 font-medium text-slate-100">{player.nickname}</td>
+            <td className="py-1 pr-2 font-medium text-slate-100">
+              {player.wallet ? (
+                <Link href={`/profile/${player.wallet}`} className="hover:underline">
+                  {player.nickname}
+                </Link>
+              ) : (
+                player.nickname
+              )}
+            </td>
             <td className="py-1 pr-2 text-slate-400">{player.playerId === hostId ? t.host : ""}</td>
             <td className="py-1 pr-2">
               <span className={player.connected ? "text-emerald-400" : "text-red-400"}>

@@ -15,7 +15,7 @@ import type { Address } from "viem";
 
 import { createHttpHandler } from "./api/http.ts";
 import { createChainClient, loadChainConfig } from "./chain/config.ts";
-import { createDefaultLoadoutVerifier } from "./chain/defaultVerifier.ts";
+import { createDefaultLoadoutVerifier, createDefaultSkillMetadataReader } from "./chain/defaultVerifier.ts";
 import { getCatalog, type SkillDef } from "./chain/reader.ts";
 import type { SkillInstance } from "./engine/index.ts";
 import { createRealtimeServer } from "./realtime/server.ts";
@@ -93,7 +93,14 @@ function createDefaultLoadoutResolver(
 // Boot hanya saat dijalankan langsung (node src/index.ts), bukan saat di-import sebagai lib.
 if (import.meta.main) {
   const PORT = Number(process.env.PORT ?? 3001);
-  const httpServer = createServer(createHttpHandler());
+  // DI wiring: the HTTP layer never builds a viem client itself (see
+  // api/http.ts's HttpHandlerOptions) - this resolves the real
+  // GET /metadata/:id.json skill reader (env vars, falling back to
+  // contracts/deployments/91342.json) the same way verifyLoadout below
+  // does. undefined here (chain not configured) means the metadata route
+  // responds 503 rather than the server failing to boot.
+  const resolveSkill = createDefaultSkillMetadataReader();
+  const httpServer = createServer(createHttpHandler({ resolveSkill }));
   // DI wiring: the realtime layer never builds a viem client itself (see
   // realtime/server.ts's LoadoutVerifier/resolveLoadout / RealtimeServerOptions)
   // - this is the one spot that resolves the real ones (env vars, falling

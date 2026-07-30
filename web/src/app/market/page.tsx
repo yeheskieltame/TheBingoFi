@@ -7,15 +7,19 @@ import { useBuySkill } from "@/hooks/useBuySkill";
 import { useLocale } from "@/hooks/useLocale";
 import { useMarketplaceSales } from "@/hooks/useMarketplaceSales";
 import { useSkillCatalog } from "@/hooks/useSkillCatalog";
+import { useSkillMetadata } from "@/hooks/useSkillMetadata";
 import { useSkillOwnership } from "@/hooks/useSkillOwnership";
+import { useSkillPrices } from "@/hooks/useSkillPrices";
 import { useWallet } from "@/hooks/useWallet";
 import { strings } from "@/i18n/strings";
 
 /**
  * Primary-sale storefront (contracts/README.md's "Alur pembelian (user)"):
- * on-chain catalog (SkillRegistry) + price/stock (Marketplace.sales) +
- * your balance (SkillCollection.balanceOfBatch), all read-only and visible
- * without a wallet - buying (Marketplace.buy) needs one connected.
+ * on-chain catalog (SkillRegistry) + dynamic price (Marketplace.priceOf,
+ * refreshed periodically - hooks/useSkillPrices.ts) + stock (Marketplace.
+ * sales) + your balance (SkillCollection.balanceOfBatch) + off-chain
+ * metadata (GET /metadata/:id.json), all read-only and visible without a
+ * wallet - buying (Marketplace.buy) needs one connected.
  */
 export default function MarketPage() {
   const locale = useLocale();
@@ -26,6 +30,8 @@ export default function MarketPage() {
   const skillIds = catalog.catalog?.map((entry) => entry.skillId) ?? [];
   const ownership = useSkillOwnership(wallet.address, skillIds);
   const sales = useMarketplaceSales(skillIds);
+  const prices = useSkillPrices(skillIds);
+  const metadata = useSkillMetadata(skillIds);
   const buy = useBuySkill();
 
   const [amounts, setAmounts] = useState<Record<number, number>>({});
@@ -35,8 +41,9 @@ export default function MarketPage() {
     if (buy.isConfirmed && buyingSkillId !== null) {
       ownership.reload();
       sales.reload();
+      prices.reload();
     }
-    // Only re-run when the tx actually confirms - ownership/sales.reload are stable-enough setters, re-including them would just re-trigger on every catalog refresh.
+    // Only re-run when the tx actually confirms - ownership/sales/prices.reload are stable-enough setters, re-including them would just re-trigger on every catalog refresh.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buy.isConfirmed]);
 
@@ -97,6 +104,9 @@ export default function MarketPage() {
               key={entry.skillId}
               entry={entry}
               sale={sales.sales.get(entry.skillId)}
+              currentPrice={prices.prices.get(entry.skillId)}
+              priceLoading={prices.loading && !prices.prices.has(entry.skillId)}
+              metadata={metadata.metadata.get(entry.skillId)}
               ownedBalance={ownership.balances.get(entry.skillId) ?? 0n}
               amount={amountFor(entry.skillId)}
               onAmountChange={(amount) => setAmounts((prev) => ({ ...prev, [entry.skillId]: amount }))}
@@ -106,7 +116,8 @@ export default function MarketPage() {
               buyError={buyingSkillId === entry.skillId ? buy.error : null}
               txHash={buyingSkillId === entry.skillId ? buy.hash : undefined}
               onBuy={() => {
-                const price = sales.sales.get(entry.skillId)?.price;
+                // priceOf() is the ONLY correct quote source (contracts/README.md's Dynamic Pricing) - never sale.basePrice.
+                const price = prices.prices.get(entry.skillId);
                 if (price !== undefined) handleBuy(entry.skillId, price);
               }}
             />

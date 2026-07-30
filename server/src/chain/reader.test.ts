@@ -5,6 +5,7 @@ import type { Address } from "viem";
 import {
   getCatalog,
   getOwnedSkillIds,
+  getSkillById,
   verifyLoadout,
   verifyLoadoutPure,
   type ChainReadClient,
@@ -104,6 +105,25 @@ test("getCatalog normalizes uint8/uint16 fields to plain numbers", async () => {
   assert.equal(typeof def!.charges, "number");
   assert.equal(typeof def!.maxPerLoadout, "number");
   assert.equal(typeof def!.rarity, "number");
+});
+
+// -- getSkillById ---------------------------------------------------------
+
+test("getSkillById returns the SkillDef when the skill exists", async () => {
+  const client = mockClient({
+    exists: () => true,
+    getSkill: (args) => rawSkill({ skillId: Number(args![0]), effectType: "WILD_DAUB" }),
+  });
+
+  const def = await getSkillById(client, REGISTRY, 1);
+  assert.equal(def?.skillId, 1);
+  assert.equal(def?.effectType, "WILD_DAUB");
+});
+
+test("getSkillById returns undefined (without calling getSkill) when the skill doesn't exist", async () => {
+  const client = mockClient({ exists: () => false });
+  const def = await getSkillById(client, REGISTRY, 999);
+  assert.equal(def, undefined);
 });
 
 // -- getOwnedSkillIds -----------------------------------------------------

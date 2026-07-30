@@ -8,8 +8,12 @@
  * "./protocol" and "./engine", see web/README.md) and CLAUDE.md's "GIWA
  * Chain" section for the canonical network values.
  *
- * Contract addresses default to the live GIWA Sepolia deployment (see
- * contracts/deployments/91342.json) and can be overridden per-env via
+ * Contract addresses default to the live GIWA Sepolia deployment, read
+ * DIRECTLY from contracts/deployments/91342.json (the same file
+ * `forge script --broadcast` overwrites on every redeploy, see
+ * contracts/README.md's "Lokasi Address Hasil Deploy") rather than a
+ * hand-copied hardcoded object - so the FE can never drift from whatever
+ * was last actually deployed. Can still be overridden per-env via
  * NEXT_PUBLIC_* vars (e.g. to point at a different deployment) - see
  * web/.env.example.
  *
@@ -24,6 +28,7 @@ import marketplaceAbiJson from "../../../contracts/abi/Marketplace.json";
 import skillCollectionAbiJson from "../../../contracts/abi/SkillCollection.json";
 import skillFactoryAbiJson from "../../../contracts/abi/SkillFactory.json";
 import skillRegistryAbiJson from "../../../contracts/abi/SkillRegistry.json";
+import deployments from "../../../contracts/deployments/91342.json";
 
 // ABI JSON imports get a widened (non-literal) TS type from
 // `resolveJsonModule` - cast through `unknown` to viem's loose `Abi` type
@@ -47,12 +52,12 @@ export const giwaSepolia = defineChain({
   testnet: true,
 });
 
-/** Live GIWA Sepolia addresses (contracts/deployments/91342.json) - default when no env override is set. */
+/** Live GIWA Sepolia addresses, straight from contracts/deployments/91342.json - default when no env override is set. */
 const DEFAULT_ADDRESSES = {
-  registry: "0xEb1d19B0d95b73Ef1A6e00B2D83f8F69999e2BD4",
-  factory: "0xa9F2f90b5275e217a8b76049fFF4A0c6EC8Ead0D",
-  collection: "0x1204602e50af5d714Fc1A8c6d7EbFa01bEEC3B10",
-  marketplace: "0x127b3d2F1b15720BAF6Df299b4e5E7f50c785c9d",
+  registry: deployments.contracts.SkillRegistry,
+  factory: deployments.contracts.SkillFactory,
+  collection: deployments.contracts.SkillCollection,
+  marketplace: deployments.contracts.Marketplace,
 } as const;
 
 function envAddress(value: string | undefined, fallback: string): Address {

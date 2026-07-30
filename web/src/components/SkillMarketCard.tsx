@@ -1,16 +1,24 @@
 import { formatEther } from "viem";
+import type { SkillMetadataResponse } from "@thebingofi/server/protocol";
 
+import SkillMedia from "@/components/SkillMedia";
+import SkillTierBadge from "@/components/SkillTierBadge";
 import { useLocale } from "@/hooks/useLocale";
 import type { SkillCatalogEntry } from "@/hooks/useSkillCatalog";
 import type { SaleInfo } from "@/hooks/useMarketplaceSales";
 import { strings } from "@/i18n/strings";
 import { explorerTxUrl } from "@/lib/chain";
+import { TIER_BORDER_CLASS, tierForMaxSupply } from "@/lib/skillTier";
 
 export type BuyStatus = "idle" | "submitting" | "confirming" | "success" | "error";
 
 export interface SkillMarketCardProps {
   readonly entry: SkillCatalogEntry;
   readonly sale: SaleInfo | undefined;
+  /** Marketplace.priceOf(skillId) - the current dynamic price, THE quote source (contracts/README.md's Dynamic Pricing). */
+  readonly currentPrice: bigint | undefined;
+  readonly priceLoading: boolean;
+  readonly metadata: SkillMetadataResponse | undefined;
   readonly ownedBalance: bigint;
   readonly amount: number;
   readonly onAmountChange: (amount: number) => void;
@@ -22,10 +30,19 @@ export interface SkillMarketCardProps {
   readonly onBuy: () => void;
 }
 
-/** Dumb: one skill's marketplace listing - catalog metadata + on-chain sale (price/stock) + your balance + a simple amount picker and buy action. Used by /market's page.tsx, which owns all the on-chain reads/writes. */
+/**
+ * Dumb: one skill's marketplace listing - catalog metadata (on-chain +
+ * GET /metadata/:id.json), dynamic price (`priceOf`) vs. base listing price
+ * (discount/premium badge), stock + scarcity tier, and a simple amount
+ * picker + buy action. Used by /market's page.tsx, which owns all the
+ * on-chain reads/writes + metadata fetch.
+ */
 export default function SkillMarketCard({
   entry,
   sale,
+  currentPrice,
+  priceLoading,
+  metadata,
   ownedBalance,
   amount,
   onAmountChange,
@@ -40,21 +57,45 @@ export default function SkillMarketCard({
   const t = strings[locale].market;
   // Typed as Record<string, string>, see LoadoutPicker.tsx's same note.
   const effectNames: Record<string, string> = strings[locale].play.skills.effectNames;
+  const fallbackName = effectNames[entry.effectType] ?? entry.effectType;
+  const displayName = metadata?.name ?? fallbackName;
 
   const remaining = sale ? sale.maxSupply - sale.minted : 0n;
   const soldOut = sale ? remaining <= 0n : false;
-  const canBuy = walletConnected && sale?.active && !soldOut && entry.active;
+  const canBuy = walletConnected && sale?.active === true && !soldOut && entry.active && currentPrice !== undefined;
+  const tier = sale ? tierForMaxSupply(sale.maxSupply) : undefined;
+  const stockPct = sale && sale.maxSupply > 0n ? Number((sale.minted * 100n) / sale.maxSupply) : 0;
+
+  // Dynamic price vs. base listing price (contracts/README.md's Dynamic
+  // Pricing: scarcity ramp pushes it up, demand decay pulls it down) - only
+  // meaningful once both reads have resolved.
+  let priceBadge: "discount" | "premium" | null = null;
+  let pricePct = 0;
+  if (sale && sale.basePrice > 0n && currentPrice !== undefined) {
+    if (currentPrice < sale.basePrice) {
+      priceBadge = "discount";
+      pricePct = Number(((sale.basePrice - currentPrice) * 100n) / sale.basePrice);
+    } else if (currentPrice > sale.basePrice) {
+      priceBadge = "premium";
+      pricePct = Number(((currentPrice - sale.basePrice) * 100n) / sale.basePrice);
+    }
+  }
 
   return (
-    <li className="space-y-2 rounded border border-slate-800 bg-slate-900/60 p-4">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="text-lg font-semibold text-white">{effectNames[entry.effectType] ?? entry.effectType}</h3>
+    <li className={`space-y-2 rounded border bg-slate-900/60 p-4 ${tier ? TIER_BORDER_CLASS[tier] : "border-slate-800"}`}>
+      <div className="flex items-start gap-3">
+        <SkillMedia imageUrl={metadata?.image} animationUrl={metadata?.animation_url} label={displayName} />
+        <div className="min-w-0 flex-1 space-y-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-semibold text-white">{displayName}</h3>
+            {tier && <SkillTierBadge tier={tier} />}
+            {!entry.active && <span className="rounded bg-slate-700 px-2 py-0.5 text-xs">{t.inactive}</span>}
+          </div>
           <p className="text-xs text-slate-400">
             #{entry.skillId} · {t.rarity} {entry.rarity}
           </p>
+          {metadata?.description && <p className="text-xs text-slate-400">{metadata.description}</p>}
         </div>
-        {!entry.active && <span className="rounded bg-slate-700 px-2 py-0.5 text-xs">{t.inactive}</span>}
       </div>
 
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-300">
@@ -69,13 +110,40 @@ export default function SkillMarketCard({
       </dl>
 
       {sale ? (
-        <div className="space-y-1 text-sm">
-          <p>
-            {t.price}: <span className="font-semibold">{formatEther(sale.price)} ETH</span>
-          </p>
-          <p className={soldOut ? "text-red-400" : "text-slate-300"}>
-            {t.stock}: {soldOut ? t.soldOut : `${remaining.toString()} / ${sale.maxSupply.toString()}`}
-          </p>
+        <div className="space-y-1.5 text-sm">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <span className="text-slate-500">{t.price}:</span>
+            {priceLoading || currentPrice === undefined ? (
+              <span className="text-slate-500">{t.loading}</span>
+            ) : (
+              <span className="font-semibold text-white">{formatEther(currentPrice)} ETH</span>
+            )}
+            {priceBadge === "discount" && (
+              <>
+                <span className="text-xs text-slate-500 line-through">{formatEther(sale.basePrice)} ETH</span>
+                <span className="rounded bg-emerald-900/60 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                  {t.discountBadge} {pricePct}%
+                </span>
+              </>
+            )}
+            {priceBadge === "premium" && (
+              <span className="rounded bg-amber-900/60 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300">
+                {t.premiumBadge}
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <p className={soldOut ? "text-red-400" : "text-slate-300"}>
+              {soldOut ? t.soldOut : `${t.stockRemaining} ${remaining.toString()} ${t.stockOf} ${sale.maxSupply.toString()}`}
+            </p>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-800" aria-hidden="true">
+              <div
+                className={`h-full ${soldOut ? "bg-red-500" : "bg-indigo-500"}`}
+                style={{ width: `${Math.min(100, Math.max(0, stockPct))}%` }}
+              />
+            </div>
+          </div>
         </div>
       ) : (
         <p className="text-xs text-slate-500">{t.loading}</p>
@@ -101,9 +169,16 @@ export default function SkillMarketCard({
           disabled={!canBuy || buyDisabled}
           className="rounded bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {buyStatus === "submitting" ? t.buying : buyStatus === "confirming" ? t.confirming : t.buy}
+          {soldOut
+            ? t.soldOut
+            : buyStatus === "submitting"
+              ? t.buying
+              : buyStatus === "confirming"
+                ? t.confirming
+                : t.buy}
         </button>
       </div>
+      <p className="text-[11px] text-slate-500">{t.refundNote}</p>
 
       {!walletConnected && <p className="text-xs text-amber-400">{t.connectPrompt}</p>}
       {buyStatus === "success" && txHash && (

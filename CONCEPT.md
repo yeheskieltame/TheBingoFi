@@ -46,9 +46,14 @@ Skin (lini kedua, kosmetik murni): tema board, efek daub, avatar frame, victory 
 
 Satu skill punya varian rarity yang mengubah *flavor*, bukan kekuatan mentah — mis. Wild Daub rare punya animasi khusus + 1 reroll kosmetik. Kekuatan efek dijaga flat agar tidak pay-to-win; rarity menjual prestise & visual.
 
+**Identitas premium per skill** (referensi rasa: Pixie Chess): tiap skill = karakter/mascot dengan visual asset khusus — ikon, ilustrasi kartu, animasi cast di board (daub meledak, ghost berbayang, swap berputar), dan frame/efek berbeda per tier rarity. Makin rare makin "hidup" assetnya (static → animated → full effect). Struktur metadata NFT menyediakan slot `image` + `animation_url` + atribut rarity sejak awal supaya asset tinggal di-drop tim visual tanpa ubah kontrak.
+
 ## 4. Ekonomi
 
-- **Primary sale:** platform mint & jual skill/skin (fixed price atau limited drop per season).
+- **Primary sale:** platform mint & jual skill/skin (limited drop per season) dengan **harga dinamis on-chain**:
+  - **Scarcity ramp:** harga naik seiring stok terjual (mendekati sold-out = makin mahal). Item ber-supply super kecil (mis. 1 unit = super rare) dihargai base price premium sejak rilis.
+  - **Demand decay:** kalau lama tidak ada pembelian, diskon bertahap muncul (sampai batas maksimal); sekali ada yang beli, diskon reset. Rame = mahal, sepi = diskon — pasar yang mengatur.
+  - Parameter (persen ramp, interval decay, diskon maks) di-set platform per marketplace, bisa dituning tanpa redeploy.
 - **Secondary:** tradeable di marketplace, platform ambil royalti (mis. 5%).
 - **Season model:** tiap season rilis batch skill baru lewat factory — konten segar tanpa ubah kontrak.
 - **Free player tetap kompetitif:** mode Casual tanpa skill + skill starter pinjaman (non-NFT, tidak tradeable) agar onboarding tanpa wallet sama sekali.
@@ -153,6 +158,13 @@ GASOK tidak punya track GameFi — yang dinilai adalah kemampuan membawa massive
 - **Spectator mode** untuk room teman/tournament.
 - **Emote & quick-chat** in-match (preset, aman dari toxic; emote premium = lini kosmetik).
 - **Club/Guild**: club quest mingguan (akumulasi anggota), club leaderboard, club chat.
+
+### 7.4b Plaza — Ruang Sosial & Showcase (ala sosmed)
+
+- **Ruang diskusi global (Plaza):** chat publik realtime — ngobrol strategi, cari lawan, **promosi asset** ("jual Wild Daub rare, cek profilku").
+- **Pamer skill:** pesan chat bisa melampirkan kartu skill yang dimiliki (render sebagai kartu, bukan teks) — flex koleksi langsung di percakapan.
+- **Profil publik shareable:** `/profile/<address>` — koleksi skill on-chain, stats, streak. Tombol share ke sosmed lain (X/Telegram/copy link) dengan preview card (OG image) — tiap share = akuisisi gratis (K-factor).
+- Moderasi: rate limit + panjang pesan dulu; report/mute menyusul. Marketplace P2P (escrow listing antar user) menyusul setelah Plaza hidup — v1 promosi berbasis chat + royalti EIP-2981 sudah jalan di transfer mana pun.
 
 ### 7.5 Leaderboard & Identity
 

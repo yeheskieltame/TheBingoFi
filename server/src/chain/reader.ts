@@ -103,6 +103,37 @@ export async function getCatalog(client: ChainReadClient, registryAddress: Addre
   );
 }
 
+/**
+ * Fetches a single skillId's SkillDef, or undefined if it isn't registered.
+ * Checks `exists` first rather than calling `getSkill` directly - `getSkill`
+ * reverts with `SkillNotFound` for an unregistered id (see
+ * contracts/src/SkillRegistry.sol), so this never throws for "not found",
+ * only for a genuine RPC/chain error. Used by the metadata endpoint (see
+ * api/http.ts's GET /metadata/:id.json) to read one skill without pulling
+ * the whole catalog via getCatalog.
+ */
+export async function getSkillById(
+  client: ChainReadClient,
+  registryAddress: Address,
+  skillId: number,
+): Promise<SkillDef | undefined> {
+  const exists = (await client.readContract({
+    address: registryAddress,
+    abi: skillRegistryAbi,
+    functionName: "exists",
+    args: [BigInt(skillId)],
+  })) as boolean;
+  if (!exists) return undefined;
+
+  const raw = (await client.readContract({
+    address: registryAddress,
+    abi: skillRegistryAbi,
+    functionName: "getSkill",
+    args: [BigInt(skillId)],
+  })) as RawSkillDef;
+  return toSkillDef(raw);
+}
+
 /** Subset of `skillIds` that `owner` holds at least 1 of, via SkillCollection.balanceOfBatch. */
 export async function getOwnedSkillIds(
   client: ChainReadClient,

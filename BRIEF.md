@@ -39,7 +39,10 @@ Aturan lengkap + skill system + ekonomi: [CONCEPT.md](CONCEPT.md).
 | Smart contract (Registry, Factory, Collection ERC-1155, Marketplace) | ✅ **live & verified di GIWA Sepolia**, katalog 5 skill terisi, coverage 100% |
 | Skill in-match (5 skill + Nullify window 15s) | ✅ engine + realtime + UI, tested |
 | Wallet connect (wagmi, injected) + link ke room + loadout NFT | ✅ jalan, verifikasi ownership on-chain |
-| Marketplace `/market` (katalog, harga, beli NFT, balance) | ✅ jalan, on-chain |
+| Marketplace `/market` — **dynamic pricing on-chain** (scarcity ramp + demand decay, tier Super Rare/Rare/…) | ✅ live, quote via `priceOf` |
+| Plaza `/plaza` — chat sosial global + pamer/promosi kartu skill | ✅ jalan (in-memory) |
+| Profil publik `/profile/<address>` + share X/Telegram/copy | ✅ jalan, on-chain |
+| Metadata NFT `/metadata/{id}.json` (slot image + animation_url utk asset premium/mascot) | ✅ jalan — asset visual = porsi kalian |
 | FE lengkap (semua flow di atas, Tailwind utilitarian) | ✅ **100% fungsional — sisa polish visual = porsi kalian** |
 | Friends/club, event scheduler, persistence (DB) | ⏳ belum — jangan didesain dulu kecuali diminta |
 
@@ -53,8 +56,10 @@ Halaman yang menunggu dipercantik (semua sudah jalan penuh):
 2. **`/play`** — 4 fase dalam satu halaman: **Lobby** (daftar pemain, kode room copyable, tombol host; room standard: link wallet + loadout picker dari NFT yang dimiliki), **Draft** (susun board 5×5: acak + tukar sel, validasi realtime), **Match** (board dengan sel ter-mark, angka terpanggil, indikator giliran, **panel skill** + banner Nullify dengan countdown 15 detik — INI layar paling penting, kejelasan "giliran siapa & skill apa yang pending" adalah inti game feel), **Result** (pemenang + main lagi).
 3. **`/daily`** — susun board, hasil skor, **share card** (aset viral utama — bikin semenarik mungkin buat di-screenshot/dibagikan), leaderboard harian.
 4. **`/quests`** — daftar quest + progress bar.
-5. **`/market`** — katalog skill on-chain, harga/stok, beli NFT (wagmi), balance, link tx explorer.
-6. Notifikasi **quest completed** + riwayat **skill resolved** yang muncul saat main.
+5. **`/market`** — katalog skill on-chain dengan **harga dinamis** (badge diskon/laris, progress stok "tersisa X dari Y", tier badge Super Rare→Common), beli NFT (wagmi), link tx explorer. Kartu skill = kanvas utama "premium feel" (referensi rasa: Pixie Chess — tiap skill karakter/mascot; slot `image`/`animation_url` sudah tersedia dari `/metadata/{id}.json`, tinggal drop asset).
+6. **`/plaza`** — chat sosial global: pesan bisa melampirkan kartu skill yang dimiliki (pamer/promosi) — desain kartu chat yang bikin orang pengen flex.
+7. **`/profile/[address]`** — showcase koleksi + tombol share (copy/X/Telegram) — halaman yang bakal di-screenshot orang, prioritas visual tinggi.
+8. Notifikasi **quest completed** + riwayat **skill resolved** yang muncul saat main.
 
 **Aturan repo (penting, dijaga biar tidak bentrok):**
 

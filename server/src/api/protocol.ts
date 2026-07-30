@@ -21,6 +21,7 @@
 
 import type { LobbyView, MatchView } from "../realtime/views.ts";
 import type { SkillArgs } from "../engine/match.ts";
+import type { PlazaMessage } from "../plaza/plaza.ts";
 
 export type {
   LobbyPlayerView,
@@ -30,6 +31,7 @@ export type {
   MyTurnArmedView,
   PendingSkillView,
 } from "../realtime/views.ts";
+export type { PlazaMessage } from "../plaza/plaza.ts";
 
 /**
  * Every client->server event acks with this shape: a definite
@@ -119,6 +121,20 @@ export interface SkillRespondPayload {
   readonly nullify: boolean;
 }
 
+/**
+ * Sends a message to the global Plaza chat - CONCEPT.md §7.4b, not scoped
+ * to any room (works for guests too, no room/wallet required). `skillId`
+ * optionally attaches a skill the sender owns so FE can render it as a
+ * card ("pamer skill") - ownership itself is never checked here, only
+ * shape (see plaza/plaza.ts's validateSkillId). See server/API.md's
+ * "Plaza chat" section for validation rules and rate limit.
+ */
+export interface PlazaSendPayload {
+  readonly nickname: string;
+  readonly text: string;
+  readonly skillId?: number;
+}
+
 // -- client -> server ack data ----------------------------------------------
 
 export interface RoomJoinedAckData {
@@ -146,6 +162,16 @@ export interface WalletLinkAckData {
   readonly address: string;
 }
 
+/** Ack for plaza:send - the message as actually stored (server-assigned `id`/`at`). */
+export interface PlazaSendAckData {
+  readonly message: PlazaMessage;
+}
+
+/** Ack for plaza:history - the current buffer, oldest -> newest, at most 100 messages. */
+export interface PlazaHistoryAckData {
+  readonly messages: readonly PlazaMessage[];
+}
+
 export interface ClientToServerEvents {
   "room:create": (payload: RoomCreatePayload, ack: Ack<RoomJoinedAckData>) => void;
   "room:join": (payload: RoomJoinPayload, ack: Ack<RoomJoinedAckData>) => void;
@@ -163,6 +189,10 @@ export interface ClientToServerEvents {
   "skill:use": (payload: SkillUsePayload, ack: Ack<MatchCallAckData>) => void;
   /** Answers an open Nullify window for a pending skill - true to Nullify (cancel it), false to pass. */
   "skill:respond": (payload: SkillRespondPayload, ack: Ack<MatchCallAckData>) => void;
+  /** Sends a message to the global Plaza chat - see PlazaSendPayload. Rate limited to 1 per 2s per socket. */
+  "plaza:send": (payload: PlazaSendPayload, ack: Ack<PlazaSendAckData>) => void;
+  /** Fetches the current Plaza history buffer (oldest -> newest, at most 100 messages). */
+  "plaza:history": (payload: EmptyAckData, ack: Ack<PlazaHistoryAckData>) => void;
 }
 
 // -- server -> client events -------------------------------------------------
@@ -212,6 +242,8 @@ export interface ServerToClientEvents {
   "quest:completed": (payload: QuestCompletedPayload) => void;
   "skill:pending": (payload: SkillPendingPayload) => void;
   "skill:resolved": (payload: SkillResolvedPayload) => void;
+  /** Broadcast to EVERY connected socket (not room-scoped, see io.emit in realtime/server.ts) whenever any Plaza message is sent. */
+  "plaza:message": (message: PlazaMessage) => void;
 }
 
 // -- HTTP JSON API (server/API.md section 2) ---------------------------------
@@ -249,3 +281,25 @@ export type DailyPlayResponse = ChallengeResult & {
 
 /** GET /daily/leaderboard */
 export type DailyLeaderboardResponse = readonly LeaderboardEntry[];
+
+/** One ERC-1155/OpenSea-style metadata attribute entry - see SkillMetadataResponse. */
+export interface SkillMetadataAttribute {
+  readonly trait_type: string;
+  readonly value: string | number;
+}
+
+/**
+ * GET /metadata/:id.json — standard ERC-1155 token metadata, returned
+ * DIRECTLY (no `{ ok, data }` envelope, unlike every other HTTP endpoint
+ * here) since this is what `SkillCollection.uri()` points wallets/
+ * marketplaces at (CONCEPT.md §3's "identitas premium" metadata slots).
+ * `image`/`animation_url` are placeholder asset URLs - the visual team
+ * drops real files at those paths later, no contract/server change needed.
+ */
+export interface SkillMetadataResponse {
+  readonly name: string;
+  readonly description: string;
+  readonly image: string;
+  readonly animation_url: string;
+  readonly attributes: readonly SkillMetadataAttribute[];
+}

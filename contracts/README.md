@@ -27,16 +27,16 @@ flowchart TB
         FE["Web FE (wagmi/viem)"]
     end
 
-    Platform -- "createSkill(def, maxSupply, price)" --> Factory
+    Platform -- "createSkill(def, maxSupply, basePrice)" --> Factory
     Factory -- "register(def)<br/>[REGISTRAR_ROLE]" --> Registry
-    Factory -- "createSale(id, price, supply)<br/>[LISTER_ROLE]" --> Market
-    Buyer -- "buy(skillId, amount)<br/>+ ETH = price × amount" --> Market
+    Factory -- "createSale(id, basePrice, supply)<br/>[LISTER_ROLE]" --> Market
+    Buyer -- "priceOf(skillId) → quote<br/>buy(skillId, amount) + ETH ≥ quote×amount" --> Market
     Market -- "mint(buyer, id, amount)<br/>[MINTER_ROLE]" --> Collection
     Market -- "withdraw()" --> Treasury
 
     Server -. "getSkill / balanceOfBatch<br/>(verifikasi loadout)" .-> Registry
     Server -.-> Collection
-    FE -. "sales / uri / royaltyInfo" .-> Market
+    FE -. "sales / priceOf / uri / royaltyInfo" .-> Market
     FE -.-> Collection
 ```
 
@@ -54,13 +54,13 @@ sequenceDiagram
     participant R as SkillRegistry
     participant M as Marketplace
 
-    P->>F: createSkill(def, maxSupply, price)
+    P->>F: createSkill(def, maxSupply, basePrice)
     F->>R: register(def) [REGISTRAR_ROLE]
     R->>R: skillId = nextSkillId++<br/>simpan SkillDef
     R-->>F: skillId
     R-->>R: emit SkillRegistered
-    F->>M: createSale(skillId, price, maxSupply) [LISTER_ROLE]
-    M->>M: sales[skillId] = Sale(aktif)
+    F->>M: createSale(skillId, basePrice, maxSupply) [LISTER_ROLE]
+    M->>M: sales[skillId] = Sale(aktif, lastPurchaseAt=now)
     M-->>M: emit SaleCreated
     F-->>F: emit SkillCreated
     F-->>P: skillId
@@ -76,13 +76,14 @@ sequenceDiagram
     participant C as SkillCollection
     participant I as Indexer / Game Server
 
-    B->>M: sales(skillId) — baca price (call, gratis)
-    B->>M: buy(skillId, amount) + msg.value = price × amount
-    M->>M: cek: sale ada? aktif? stok cukup?<br/>bayaran pas? (revert kalau tidak)
-    M->>M: minted += amount (efek dulu — CEI)
+    B->>M: priceOf(skillId) — quote harga saat ini (call, gratis)
+    B->>M: buy(skillId, amount) + msg.value ≥ quote × amount
+    M->>M: cek: sale ada? aktif? stok cukup?<br/>unitPrice = priceOf() (sekali, dari state saat ini)<br/>msg.value cukup? (revert kalau tidak)
+    M->>M: minted += amount, lastPurchaseAt = now<br/>(efek dulu — CEI)
     M->>C: mint(buyer, skillId, amount) [MINTER_ROLE]
     C-->>I: emit TransferSingle (mint)
-    M-->>I: emit Purchased(skillId, buyer, amount, paid)
+    M-->>I: emit Purchased(skillId, buyer, amount, paid, unitPrice)
+    M->>B: refund (msg.value − cost), kalau ada<br/>(setelah mint — gagal refund → revert)
     Note over I: server refresh entitlement wallet →<br/>skill langsung bisa dipakai di loadout
     Note over M: ETH tertahan di kontrak sampai<br/>withdraw() → treasury (siapa pun boleh trigger)
 ```
@@ -94,18 +95,72 @@ sequenceDiagram
 | **SkillRegistry** | Katalog `SkillDef` (skillId, effectType, charges, cooldown, maxPerLoadout, rarity, active, metadataURI). `effectType` (bytes32, mis. `"WILD_DAUB"`) hanyalah identifier — **tidak dieksekusi on-chain**, di-mapping ke logic di game server. Hanya `REGISTRAR_ROLE` (dipegang SkillFactory) yang boleh `register()`. |
 | **SkillFactory** | Entry point tunggal platform (`CREATOR_ROLE`) untuk merilis skill baru: `createSkill(SkillDef, maxSupply, price)` sekali panggil mendaftarkan ke Registry **dan** langsung membuka sale di Marketplace. Tidak ada deploy kontrak baru per skill. |
 | **SkillCollection** | Satu ERC-1155 untuk seluruh Skill & Skin. `tokenId == skillId` dari SkillRegistry. Mint hanya lewat `MINTER_ROLE` (dipegang Marketplace). Mengimplementasikan **EIP-2981** royalti default 5% (500 basis points). |
-| **Marketplace** | Primary sale — `buy(skillId, amount)` payable, mint langsung ke pembeli, checks-effects-interactions. Revenue mengalir ke `treasury` platform via `withdraw()`. |
+| **Marketplace** | Primary sale dengan **dynamic pricing** — `buy(skillId, amount)` payable, mint langsung ke pembeli, checks-effects-interactions, kelebihan bayar auto-refund. Revenue mengalir ke `treasury` platform via `withdraw()`. |
 
 Wiring role (dari `script/Deploy.s.sol`):
 - `SkillFactory` → `REGISTRAR_ROLE` di SkillRegistry & `LISTER_ROLE` di Marketplace.
 - `Marketplace` → `MINTER_ROLE` di SkillCollection.
 
+## Dynamic Pricing (Marketplace v2)
+
+Implementasi on-chain dari model ekonomi di `CONCEPT.md` §4: harga primary
+sale bukan angka statis, tapi **scarcity ramp + demand decay** yang dihitung
+tiap saat dari `Marketplace.priceOf(skillId)`.
+
+- **Scarcity ramp** — makin dekat sold-out, makin mahal (linear sampai
+  `scarcityBps` di `minted == maxSupply`, default `10000` = **+100%**):
+
+  ```
+  scarcityPremium = basePrice * scarcityBps * minted / maxSupply / 10000
+  ```
+
+- **Demand decay** — tiap `decayInterval` penuh (default `1 days`) tanpa
+  pembelian menambah `decayStepBps` diskon (default `500` = 5%), dibatasi
+  `maxDiscountBps` (default `5000` = 50%). Diskon **reset ke 0** begitu ada
+  pembelian baru (`lastPurchaseAt` di-update):
+
+  ```
+  discountBps = min(maxDiscountBps, (block.timestamp - lastPurchaseAt) / decayInterval * decayStepBps)
+  ```
+
+- **Harga unit final**:
+
+  ```
+  priceOf(skillId) = (basePrice + scarcityPremium) * (10000 - discountBps) / 10000
+  ```
+
+- Parameter di atas (`scarcityBps`, `decayInterval`, `decayStepBps`,
+  `maxDiscountBps`) adalah **satu set global** untuk semua sale, disimpan di
+  `Marketplace.pricingParams()` dan di-tuning kapan saja lewat
+  `setPricingParams(...)` (`DEFAULT_ADMIN_ROLE`) — **tanpa redeploy kontrak**.
+- `buy(skillId, amount)` menghitung `unitPrice` **sekali** dari state saat tx
+  dieksekusi (bukan naik di tengah pembelian multi-unit), lalu
+  `cost = unitPrice * amount`. `msg.value` harus `>= cost` (kurang → revert
+  `InsufficientPayment(cost, msg.value)`); kelebihan di-refund ke pembeli
+  **setelah** mint (CEI) — kalau refund gagal (mis. pembeli kontrak tanpa
+  `receive`), seluruh tx revert `RefundFailed` (dana pembeli aman, tidak ada
+  state yang nyangkut setengah).
+- `priceOf(skillId)` tetap bisa di-query walau sale sudah sold-out (berguna
+  untuk UI "harga terakhir" / referensi); yang revert kalau sold-out hanya
+  `buy()` (`SoldOut`).
+
 ## Fungsi yang Dipanggil Frontend (wagmi/viem)
 
+- **Quote harga (WAJIB sebelum beli)**: `Marketplace.priceOf(skillId)` — view,
+  mengembalikan harga unit **saat ini** (sudah termasuk scarcity premium +
+  demand-decay discount, lihat bagian Dynamic Pricing di bawah). **FE HARUS
+  quote lewat `priceOf`, jangan pernah hitung harga manual dari
+  `basePrice`** — harga berubah setiap ada pembelian (minted naik) dan
+  setiap saat karena decay (waktu berjalan), jadi nilai `basePrice` di
+  `sales(skillId)` saja tidak cukup untuk menampilkan harga beli yang benar.
 - **Beli skill/skin**: `Marketplace.buy(skillId, amount)` — `payable`,
-  `msg.value` HARUS sama persis dengan `price * amount`. Ambil `price` dari
-  `Marketplace.sales(skillId)` (struct `Sale { price, maxSupply, minted, active }`)
-  sebelum submit tx.
+  kirim `msg.value = priceOf(skillId) * amount` (quote dulu lewat `priceOf`
+  tepat sebelum submit tx untuk minimalkan selisih akibat harga bergerak).
+  `msg.value` boleh lebih besar dari cost aktual (harga dihitung sekali dari
+  state saat tx dieksekusi) — **kelebihan otomatis di-refund** ke pembeli
+  dalam transaksi yang sama, jadi FE bisa kirim quote + small buffer untuk
+  jaga-jaga tanpa takut dana nyangkut. `msg.value` yang kurang dari cost akan
+  revert `InsufficientPayment(expected, actual)`.
 - **Cek kepemilikan**: `SkillCollection.balanceOf(owner, skillId)` — dipakai
   server saat matchmaking untuk verifikasi loadout, dan FE untuk tampilkan
   inventory.
@@ -124,23 +179,37 @@ Wiring role (dari `script/Deploy.s.sol`):
 |---|---|---|
 | `SkillCreated(skillId, effectType, maxSupply, price)` | SkillFactory | Skill baru dirilis — server sync katalog & mapping `effectType` ke logic engine. |
 | `SkillRegistered(skillId, effectType)` | SkillRegistry | Redundan dengan `SkillCreated` tapi berguna kalau ada jalur registrasi lain. |
-| `SaleCreated(skillId, price, maxSupply)` / `SaleActiveSet(skillId, active)` | Marketplace | Status sale untuk katalog toko FE. |
-| `Purchased(skillId, buyer, amount, paid)` | Marketplace | Trigger utama indexer — user beli skill, server refresh entitlement wallet tsb. |
+| `SaleCreated(skillId, basePrice, maxSupply)` / `SaleActiveSet(skillId, active)` | Marketplace | Status sale untuk katalog toko FE. |
+| `Purchased(skillId, buyer, amount, paid, unitPrice)` | Marketplace | Trigger utama indexer — user beli skill, server refresh entitlement wallet tsb. `unitPrice` = harga per unit saat tx (untuk histori harga/analytics), `paid` = total cost aktual (net, di luar refund). |
+| `PricingParamsUpdated(scarcityBps, decayInterval, decayStepBps, maxDiscountBps)` | Marketplace | Admin tuning parameter dynamic pricing global — FE bisa refresh kalkulasi/kurva harga yang ditampilkan. |
 | `TransferSingle(operator, from, to, id, value)` / `TransferBatch(...)` | SkillCollection (ERC-1155 standard) | Transfer/mint/burn token — dasar indexer inventory & ownership real-time (termasuk transfer di marketplace sekunder). |
 
 ## Live di GIWA Sepolia (chain 91342) — deployed & verified
 
 | Kontrak | Address |
 |---|---|
-| SkillRegistry | [`0xEb1d19B0d95b73Ef1A6e00B2D83f8F69999e2BD4`](https://sepolia-explorer.giwa.io/address/0xEb1d19B0d95b73Ef1A6e00B2D83f8F69999e2BD4) |
-| SkillFactory | [`0xa9F2f90b5275e217a8b76049fFF4A0c6EC8Ead0D`](https://sepolia-explorer.giwa.io/address/0xa9F2f90b5275e217a8b76049fFF4A0c6EC8Ead0D) |
-| SkillCollection | [`0x1204602e50af5d714Fc1A8c6d7EbFa01bEEC3B10`](https://sepolia-explorer.giwa.io/address/0x1204602e50af5d714Fc1A8c6d7EbFa01bEEC3B10) |
-| Marketplace | [`0x127b3d2F1b15720BAF6Df299b4e5E7f50c785c9d`](https://sepolia-explorer.giwa.io/address/0x127b3d2F1b15720BAF6Df299b4e5E7f50c785c9d) |
+| SkillRegistry | [`0x453Ea80704A0d28c6a174c2eDACf49762813f308`](https://sepolia-explorer.giwa.io/address/0x453Ea80704A0d28c6a174c2eDACf49762813f308) |
+| SkillFactory | [`0x1923eBbDd522c7FAd8BfCD8741372bff62109871`](https://sepolia-explorer.giwa.io/address/0x1923eBbDd522c7FAd8BfCD8741372bff62109871) |
+| SkillCollection | [`0x58ABFFcA5C517f93B0116b5b1b1b6AF914148077`](https://sepolia-explorer.giwa.io/address/0x58ABFFcA5C517f93B0116b5b1b1b6AF914148077) |
+| Marketplace | [`0xb3f468350c16906AA4E201CE4f7D464e0fb46D48`](https://sepolia-explorer.giwa.io/address/0xb3f468350c16906AA4E201CE4f7D464e0fb46D48) |
 
-Semua ter-verify di Blockscout. Katalog sudah di-seed 5 skill awal (id 1–5:
-WILD_DAUB, DOUBLE_CALL, GHOST_CALL, CELL_SWAP, NULLIFY — masing-masing supply
-1000, harga 0.0005 ETH) via `script/SeedSkills.s.sol`. Address juga tersedia
-machine-readable di `deployments/91342.json`.
+Semua ter-verify di Blockscout (redeploy — Marketplace v2 dynamic pricing,
+2026-07-30). Katalog sudah di-seed 5 skill awal lewat `script/SeedSkills.s.sol`
+dengan **supply & basePrice bertingkat** untuk mendemokan scarcity tier dari
+dynamic pricing (lihat bagian Dynamic Pricing di atas):
+
+| id | Skill | maxSupply | basePrice |
+|---|---|---|---|
+| 1 | WILD_DAUB | 1000 | 0.0005 ETH |
+| 2 | DOUBLE_CALL | 500 | 0.0008 ETH |
+| 3 | GHOST_CALL | 250 | 0.001 ETH |
+| 4 | CELL_SWAP | 100 | 0.002 ETH |
+| 5 | NULLIFY | 10 | 0.01 ETH (super rare) |
+
+Supply makin kecil → basePrice makin tinggi sejak rilis, dan makin cepat
+mencapai premium scarcity penuh (+100%) karena `minted/maxSupply` naik lebih
+cepat per unit terjual. Address juga tersedia machine-readable di
+`deployments/91342.json`.
 
 ## Deploy ke GIWA Sepolia
 
@@ -196,11 +265,13 @@ Detail format ada di `deployments/README.md`.
 
 ```bash
 forge build   # compile
-forge test    # unit test (34 test, wajib hijau semua sebelum ubah src/)
+forge test    # unit test (52 test, wajib hijau semua sebelum ubah src/)
+forge coverage --no-match-coverage script   # coverage (wajib 100% semua kolom)
 forge fmt     # format
 ```
 
 Test wajib mencakup: win-independent unit test tiap kontrak (Registry role
 guard, Factory wiring, Collection mint/royalti, Marketplace buy/sale
-lifecycle). Jangan ubah logic di `src/` tanpa memastikan `forge test` tetap
-hijau.
+lifecycle + dynamic pricing: scarcity ramp, demand decay, refund, validasi
+`setPricingParams`). Jangan ubah logic di `src/` tanpa memastikan `forge
+test` tetap hijau dan coverage tetap 100%.

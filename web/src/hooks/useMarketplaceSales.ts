@@ -4,21 +4,31 @@ import { useCallback, useEffect, useState } from "react";
 
 import { contractAddresses, marketplaceAbi, publicClient } from "@/lib/chain";
 
-/** Mirrors contracts/src/Marketplace.sol's `struct Sale { price; maxSupply; minted; active }`. */
+/**
+ * Mirrors contracts/src/Marketplace.sol's `struct Sale { basePrice;
+ * maxSupply; minted; active; lastPurchaseAt }` (Marketplace v2, dynamic
+ * pricing - contracts/README.md's "Dynamic Pricing"). `basePrice` here is
+ * the STATIC listing price only - never the price to actually quote a
+ * purchase with, see hooks/useSkillPrices.ts's `priceOf` read for that.
+ */
 export interface SaleInfo {
-  readonly price: bigint;
+  readonly basePrice: bigint;
   readonly maxSupply: bigint;
   readonly minted: bigint;
   readonly active: boolean;
+  readonly lastPurchaseAt: bigint;
 }
 
 /**
- * Reads Marketplace.sales(skillId) for each id in `skillIds` - price/stock
- * for /market's buy flow (contracts/README.md's "Fungsi yang Dipanggil
- * Frontend": "Ambil price dari Marketplace.sales(skillId) sebelum submit
- * tx"). The public getter returns a positional tuple (price, maxSupply,
- * minted, active), not a named struct - see server/src/chain/abi.ts's
- * comment on the same quirk.
+ * Reads Marketplace.sales(skillId) for each id in `skillIds` - stock
+ * (maxSupply/minted) + base listing price for /market (contracts/README.md's
+ * "Fungsi yang Dipanggil Frontend"). The public getter returns a positional
+ * tuple (basePrice, maxSupply, minted, active, lastPurchaseAt), not a named
+ * struct - see server/src/chain/abi.ts's comment on the same quirk.
+ *
+ * NOT the quote source for a purchase - `basePrice` here is static and does
+ * NOT reflect scarcity ramp/demand decay. Use hooks/useSkillPrices.ts's
+ * `priceOf` read for that (contracts/README.md is explicit about this).
  */
 export function useMarketplaceSales(skillIds: readonly number[]) {
   const [sales, setSales] = useState<ReadonlyMap<number, SaleInfo>>(new Map());
@@ -48,9 +58,9 @@ export function useMarketplaceSales(skillIds: readonly number[]) {
               abi: marketplaceAbi,
               functionName: "sales",
               args: [BigInt(id)],
-            })) as readonly [bigint, bigint, bigint, boolean];
-            const [price, maxSupply, minted, active] = raw;
-            return [id, { price, maxSupply, minted, active }] as const;
+            })) as readonly [bigint, bigint, bigint, boolean, bigint];
+            const [basePrice, maxSupply, minted, active, lastPurchaseAt] = raw;
+            return [id, { basePrice, maxSupply, minted, active, lastPurchaseAt }] as const;
           }),
         );
         if (!cancelled) setSales(new Map(entries));

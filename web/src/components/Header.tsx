@@ -54,10 +54,32 @@ export default function Header() {
                 {t.nav.market}
               </Link>
             </li>
+            <li>
+              <Link href="/plaza" className="rounded px-2 py-1 hover:bg-slate-800">
+                {t.nav.plaza}
+              </Link>
+            </li>
           </ul>
         </nav>
 
         <div className="flex items-center gap-2">
+          {wallet.isConnected && wallet.address ? (
+            <Link
+              href={`/profile/${wallet.address}`}
+              className="rounded border border-slate-700 px-2 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+            >
+              {t.nav.profile}
+            </Link>
+          ) : (
+            <span
+              aria-disabled="true"
+              title={t.nav.profileConnectHint}
+              className="cursor-not-allowed rounded border border-slate-800 px-2 py-1 text-xs font-semibold text-slate-600"
+            >
+              {t.nav.profile}
+            </span>
+          )}
+
           <button
             type="button"
             onClick={toggleLocale}

@@ -22,6 +22,19 @@
   },
   {
     "type": "function",
+    "name": "BPS_DENOMINATOR",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "DEFAULT_ADMIN_ROLE",
     "inputs": [],
     "outputs": [
@@ -87,7 +100,7 @@
         "internalType": "uint256"
       },
       {
-        "name": "price",
+        "name": "basePrice",
         "type": "uint256",
         "internalType": "uint256"
       },
@@ -163,6 +176,53 @@
   },
   {
     "type": "function",
+    "name": "priceOf",
+    "inputs": [
+      {
+        "name": "skillId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "pricingParams",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "scarcityBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "decayInterval",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "decayStepBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "maxDiscountBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "renounceRole",
     "inputs": [
       {
@@ -209,7 +269,7 @@
     ],
     "outputs": [
       {
-        "name": "price",
+        "name": "basePrice",
         "type": "uint256",
         "internalType": "uint256"
       },
@@ -227,9 +287,42 @@
         "name": "active",
         "type": "bool",
         "internalType": "bool"
+      },
+      {
+        "name": "lastPurchaseAt",
+        "type": "uint64",
+        "internalType": "uint64"
       }
     ],
     "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "setPricingParams",
+    "inputs": [
+      {
+        "name": "scarcityBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "decayInterval",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "decayStepBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "maxDiscountBps",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -303,6 +396,37 @@
   },
   {
     "type": "event",
+    "name": "PricingParamsUpdated",
+    "inputs": [
+      {
+        "name": "scarcityBps",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "decayInterval",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "decayStepBps",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "maxDiscountBps",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Purchased",
     "inputs": [
       {
@@ -325,6 +449,12 @@
       },
       {
         "name": "paid",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "unitPrice",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -437,7 +567,7 @@
         "internalType": "uint256"
       },
       {
-        "name": "price",
+        "name": "basePrice",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -506,6 +636,37 @@
   },
   {
     "type": "error",
+    "name": "InsufficientPayment",
+    "inputs": [
+      {
+        "name": "expected",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "actual",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InvalidDecayInterval",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidMaxDiscountBps",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RefundFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "SaleExists",
     "inputs": [
       {
@@ -562,22 +723,6 @@
     "type": "error",
     "name": "WithdrawFailed",
     "inputs": []
-  },
-  {
-    "type": "error",
-    "name": "WrongPayment",
-    "inputs": [
-      {
-        "name": "expected",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "actual",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ]
   },
   {
     "type": "error",

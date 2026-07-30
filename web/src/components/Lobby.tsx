@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import type { LobbyPlayerView, LobbyView } from "@thebingofi/server/protocol";
 
@@ -119,7 +120,14 @@ export default function Lobby({
             <ul className="mt-1 space-y-1 text-xs text-slate-300">
               {players.map((player) => (
                 <li key={player.playerId}>
-                  {player.nickname}:{" "}
+                  {player.wallet ? (
+                    <Link href={`/profile/${player.wallet}`} className="hover:underline">
+                      {player.nickname}
+                    </Link>
+                  ) : (
+                    player.nickname
+                  )}
+                  :{" "}
                   {player.loadout && player.loadout.length > 0 ? player.loadout.join(", ") : t.lobby.loadoutNone}
                 </li>
               ))}

@@ -1,13 +1,15 @@
 /**
  * Manual HTTP JSON API: no framework, a router simple enough not to need
- * one (7 endpoints). Mounted on the same node:http server as Socket.IO
+ * one (8 endpoints). Mounted on the same node:http server as Socket.IO
  * (see index.ts: `createServer(createHttpHandler())` then socket.io
  * attaches to that same httpServer).
  *
- * Every response is JSON `{ ok: true, data }` / `{ ok: false, error }`, and
- * every response carries `Access-Control-Allow-Origin: *` (FE dev server
- * runs on a different origin/port) - see sendJson. OPTIONS requests get a
- * bare CORS preflight response.
+ * Every response is JSON `{ ok: true, data }` / `{ ok: false, error }`
+ * EXCEPT `GET /metadata/:id.json`, which returns the raw ERC-1155 metadata
+ * object directly (see below) - every response still carries
+ * `Access-Control-Allow-Origin: *` (FE dev server runs on a different
+ * origin/port) - see sendJson/sendMetadata. OPTIONS requests get a bare
+ * CORS preflight response.
  *
  * Anti-cheat: GET /daily/today NEVER includes the day's call sequence, only
  * `{ number, date }` - see daily/challenge.ts's callSequence, which this
@@ -16,16 +18,99 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
+import type { SkillDef } from "../chain/reader.ts";
 import { challengeNumber, playChallenge, shareCard } from "../daily/index.ts";
-import type { Board } from "../engine/index.ts";
+import { CELL_SWAP, DOUBLE_CALL, GHOST_CALL, NULLIFY, WILD_DAUB, type Board } from "../engine/index.ts";
 import { exampleQuests } from "../quest/index.ts";
 import { getLeaderboard, submitScore } from "./dailyLeaderboard.ts";
-import type { DailyPlayResponse, DailyTodayResponse } from "./protocol.ts";
+import type { DailyPlayResponse, DailyTodayResponse, SkillMetadataResponse } from "./protocol.ts";
 import { getProgress } from "./questStore.ts";
 
 const MAX_BODY_BYTES = 10 * 1024;
 const MAX_NICKNAME_LENGTH = 24;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// -- metadata (GET /metadata/:id.json) -----------------------------------
+
+/** Placeholder asset host - slot for the visual team to drop real files at, no contract/server change needed (CONCEPT.md §3). */
+const METADATA_ASSET_BASE_URL = "https://api.thebingofi.xyz/assets/skills";
+const METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
+const METADATA_CACHE_CONTROL = "public, max-age=300";
+/** 64 lowercase hex digits, zero-padded - the ERC-1155 metadata URI {id} substitution convention. */
+const HEX_METADATA_ID_RE = /^[0-9a-f]{64}$/;
+const DECIMAL_METADATA_ID_RE = /^[0-9]+$/;
+
+/** One sentence per effectType (CLAUDE.md/CONCEPT.md §3's 5 starting skills) - English, no fallback data available on-chain to derive this from. */
+const EFFECT_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  [WILD_DAUB]: "Marks one cell on your own board without that number being called.",
+  [DOUBLE_CALL]: "Lets you call two numbers in a single turn instead of one.",
+  [GHOST_CALL]: "Your next call marks only your own board, not your opponents'.",
+  [CELL_SWAP]: "Swaps the numbers in two cells on your own board.",
+  [NULLIFY]: "Cancels an opponent's skill before it takes effect.",
+};
+
+/**
+ * On-chain effectType is bytes32, so viem returns it as 0x-padded hex
+ * ("0x57494c445f44415542000...") - decode to the plain "WILD_DAUB" form.
+ * Already-decoded strings (unit-test mocks) pass through unchanged.
+ */
+function decodeEffectType(effectType: string): string {
+  if (!effectType.startsWith("0x")) return effectType;
+  return Buffer.from(effectType.slice(2), "hex").toString("utf8").replace(/\0+$/, "");
+}
+
+/** "WILD_DAUB" -> "Wild Daub" - generic, so any future effectType still gets a sensible name without a lookup table. */
+function humanizeEffectType(effectType: string): string {
+  return effectType
+    .toLowerCase()
+    .split("_")
+    .filter((word) => word.length > 0)
+    .map((word) => word[0]!.toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/** "WILD_DAUB" -> "wild-daub", for the placeholder asset URLs below. */
+function slugifyEffectType(effectType: string): string {
+  return effectType.toLowerCase().replace(/_/g, "-");
+}
+
+/** Builds the ERC-1155 metadata JSON for one skill (CONCEPT.md §3's "identitas premium" metadata slots). */
+function skillMetadata(def: SkillDef): SkillMetadataResponse {
+  const effectType = decodeEffectType(def.effectType);
+  const slug = slugifyEffectType(effectType);
+  return {
+    name: humanizeEffectType(effectType),
+    description: EFFECT_DESCRIPTIONS[effectType] ?? "A special skill effect used during a match.",
+    image: `${METADATA_ASSET_BASE_URL}/${slug}.png`,
+    animation_url: `${METADATA_ASSET_BASE_URL}/${slug}.webm`,
+    attributes: [
+      { trait_type: "Effect", value: effectType },
+      { trait_type: "Rarity", value: def.rarity },
+      { trait_type: "Charges", value: def.charges },
+      { trait_type: "Cooldown", value: def.cooldown },
+      { trait_type: "Max Per Loadout", value: def.maxPerLoadout },
+    ],
+  };
+}
+
+/**
+ * Parses a GET /metadata/:id.json path segment (with the ".json" suffix
+ * already stripped): either a plain decimal skillId ("1") or a 64-hex-digit
+ * lowercase zero-padded id ala the ERC-1155 metadata URI {id} substitution
+ * ("000...0001") - both resolve to the same skillId. undefined for anything
+ * else, or a non-positive/unsafe result.
+ */
+function parseMetadataId(raw: string): number | undefined {
+  let value: number;
+  if (HEX_METADATA_ID_RE.test(raw)) {
+    value = Number(BigInt(`0x${raw}`));
+  } else if (DECIMAL_METADATA_ID_RE.test(raw)) {
+    value = Number(raw);
+  } else {
+    return undefined;
+  }
+  return Number.isSafeInteger(value) && value > 0 ? value : undefined;
+}
 
 /** An error with an HTTP status attached - thrown by validators, caught once at the top of handleRequest. */
 class HttpError extends Error {
@@ -139,6 +224,37 @@ function fail(res: ServerResponse, status: number, error: string): void {
   sendJson(res, status, { ok: false, error });
 }
 
+/** Like sendJson, but for GET /metadata/:id.json's raw (non-enveloped) ERC-1155 response, cacheable by clients/CDNs via Cache-Control. */
+function sendMetadata(res: ServerResponse, body: unknown, cacheControl: string): void {
+  const payload = JSON.stringify(body);
+  res.writeHead(200, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": Buffer.byteLength(payload),
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": cacheControl,
+  });
+  res.end(payload);
+}
+
+interface CachedMetadata {
+  readonly metadata: SkillMetadataResponse;
+  readonly expiresAt: number;
+}
+
+export interface HttpHandlerOptions {
+  /**
+   * Resolves a skillId to its on-chain SkillDef for GET /metadata/:id.json;
+   * undefined resolves to "not registered" (404). Absent (default) means
+   * chain isn't wired in for this handler - the route responds 503 rather
+   * than touching a real client. Production default is built in index.ts
+   * via chain/defaultVerifier.ts's createDefaultSkillMetadataReader (this
+   * file never builds a real chain client itself - same DI boundary as
+   * realtime/server.ts's `verifyLoadout`). Tests inject a mock/stub here
+   * instead (see http.test.ts).
+   */
+  readonly resolveSkill?: (skillId: number) => Promise<SkillDef | undefined>;
+}
+
 // -- router ---------------------------------------------------------
 
 /**
@@ -148,7 +264,12 @@ function fail(res: ServerResponse, status: number, error: string): void {
  * lets an exception escape and crash the process (see createHttpHandler's
  * own top-level catch as the last line of defense).
  */
-async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
+async function handleRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  resolveSkill: ((skillId: number) => Promise<SkillDef | undefined>) | undefined,
+  metadataCache: Map<number, CachedMetadata>,
+): Promise<void> {
   const method = req.method ?? "GET";
   const url = new URL(req.url ?? "/", "http://internal");
   const pathname = url.pathname;
@@ -225,6 +346,28 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
       return;
     }
 
+    if (method === "GET" && pathname.startsWith("/metadata/") && pathname.endsWith(".json")) {
+      const idPart = pathname.slice("/metadata/".length, -".json".length);
+      const skillId = parseMetadataId(idPart);
+      if (skillId === undefined) throw new HttpError(400, `Invalid metadata id "${idPart}"`);
+      if (!resolveSkill) throw new HttpError(503, "Chain belum dikonfigurasi - metadata tidak tersedia");
+
+      const now = Date.now();
+      const cached = metadataCache.get(skillId);
+      if (cached && cached.expiresAt > now) {
+        sendMetadata(res, cached.metadata, METADATA_CACHE_CONTROL);
+        return;
+      }
+
+      const def = await resolveSkill(skillId);
+      if (!def) throw new HttpError(404, `Skill ${skillId} not found`);
+
+      const metadata = skillMetadata(def);
+      metadataCache.set(skillId, { metadata, expiresAt: now + METADATA_CACHE_TTL_MS });
+      sendMetadata(res, metadata, METADATA_CACHE_CONTROL);
+      return;
+    }
+
     fail(res, 404, `Not found: ${method} ${pathname}`);
   } catch (err) {
     if (err instanceof HttpError) {
@@ -236,9 +379,15 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
 }
 
 /** Node:http request listener for the whole JSON API - pass to `createServer`. */
-export function createHttpHandler(): (req: IncomingMessage, res: ServerResponse) => void {
+export function createHttpHandler(opts: HttpHandlerOptions = {}): (req: IncomingMessage, res: ServerResponse) => void {
+  const resolveSkill = opts.resolveSkill;
+  // Per-handler (not module-level) so separate createHttpHandler() calls -
+  // e.g. one per test - never share cached metadata across different
+  // resolveSkill implementations.
+  const metadataCache = new Map<number, CachedMetadata>();
+
   return (req, res) => {
-    handleRequest(req, res).catch((err: unknown) => {
+    handleRequest(req, res, resolveSkill, metadataCache).catch((err: unknown) => {
       try {
         if (!res.headersSent) {
           fail(res, 500, err instanceof Error ? err.message : "Unexpected server error");

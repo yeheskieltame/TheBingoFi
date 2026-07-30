@@ -27,6 +27,9 @@ import type {
   LobbyAckData,
   MatchCallAckData,
   MatchCallPayload,
+  PlazaHistoryAckData,
+  PlazaSendAckData,
+  PlazaSendPayload,
   RoomCreatePayload,
   RoomJoinPayload,
   RoomJoinedAckData,
@@ -39,6 +42,7 @@ import type {
 } from "../api/protocol.ts";
 import { recordEvent } from "../api/questStore.ts";
 import type { MatchState, PendingSkill, SkillArgs, SkillInstance } from "../engine/index.ts";
+import { createPlazaStore } from "../plaza/plaza.ts";
 import { eventsFromCall, type GameEvent } from "../quest/events.ts";
 import {
   assertCanSetLoadout,
@@ -446,6 +450,11 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
   const verifyLoadout = opts.verifyLoadout;
   const resolveLoadout = opts.resolveLoadout;
   const nullifyTimeoutMs = opts.nullifyTimeoutMs ?? DEFAULT_NULLIFY_TIMEOUT_MS;
+  // One Plaza per server instance (not a module-level singleton) - see
+  // plaza/plaza.ts's createPlazaStore doc for why: it keeps this server's
+  // chat history/rate-limit state from bleeding into any other instance
+  // (e.g. two servers spun up back-to-back in tests).
+  const plaza = createPlazaStore();
 
   io.on("connection", (socket) => {
     socket.on(
@@ -713,6 +722,30 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
         }
 
         announceSkillResolved(io, updatedRoom, prevMatch, nextMatch, pending);
+      }),
+    );
+
+    // -- plaza (global chat, see plaza/plaza.ts) -------------------------
+    //
+    // Deliberately NOT room-scoped: plaza:send broadcasts to every
+    // connected socket via io.emit, never io.to(roomChannel(...)) - see
+    // CONCEPT.md §7.4b. Validation, trimming, and rate limiting all live in
+    // plaza.ts's addMessage; this handler only forwards the raw payload in
+    // and the resulting message out.
+
+    socket.on(
+      "plaza:send",
+      safeHandler<PlazaSendPayload, PlazaSendAckData>((payload, ack) => {
+        const message = plaza.addMessage(socket.id, payload);
+        ack({ ok: true, message });
+        io.emit("plaza:message", message);
+      }),
+    );
+
+    socket.on(
+      "plaza:history",
+      safeHandler<EmptyAckData, PlazaHistoryAckData>((_payload, ack) => {
+        ack({ ok: true, messages: plaza.getHistory() });
       }),
     );
 

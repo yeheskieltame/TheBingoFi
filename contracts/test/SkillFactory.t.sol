@@ -37,11 +37,13 @@ contract SkillFactoryTest is BaseTest {
         assertTrue(stored.active);
         assertEq(stored.metadataURI, def.metadataURI);
 
-        (uint256 price, uint256 maxSupply, uint256 minted, bool active) = marketplace.sales(skillId);
-        assertEq(price, PRICE);
+        (uint256 basePrice, uint256 maxSupply, uint256 minted, bool active, uint64 lastPurchaseAt) =
+            marketplace.sales(skillId);
+        assertEq(basePrice, PRICE);
         assertEq(maxSupply, MAX_SUPPLY);
         assertEq(minted, 0);
         assertTrue(active);
+        assertEq(lastPurchaseAt, uint64(block.timestamp));
     }
 
     function test_endToEnd_createSkillThenBuy() public {

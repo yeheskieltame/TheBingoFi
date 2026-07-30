@@ -1,11 +1,11 @@
 {
   "chainId": 91342,
   "contracts": {
-    "Marketplace": "0x127b3d2F1b15720BAF6Df299b4e5E7f50c785c9d",
-    "SkillCollection": "0x1204602e50af5d714Fc1A8c6d7EbFa01bEEC3B10",
-    "SkillFactory": "0xa9F2f90b5275e217a8b76049fFF4A0c6EC8Ead0D",
-    "SkillRegistry": "0xEb1d19B0d95b73Ef1A6e00B2D83f8F69999e2BD4"
+    "Marketplace": "0xb3f468350c16906AA4E201CE4f7D464e0fb46D48",
+    "SkillCollection": "0x58ABFFcA5C517f93B0116b5b1b1b6AF914148077",
+    "SkillFactory": "0x1923eBbDd522c7FAd8BfCD8741372bff62109871",
+    "SkillRegistry": "0x453Ea80704A0d28c6a174c2eDACf49762813f308"
   },
-  "timestamp": 1785342451,
+  "timestamp": 1785401476,
   "treasury": "0xDA50Dbbb2F23ED79F20d433396f6dbcB7EF2A674"
 }

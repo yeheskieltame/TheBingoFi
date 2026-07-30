@@ -7,9 +7,10 @@ challenge) divalidasi ulang di server — client tidak pernah dipercaya.
 
 Dua permukaan API:
 
-1. **Realtime (Socket.IO)** — room/matchmaking, draft phase, match berjalan.
-2. **HTTP JSON** — daily challenge (baca/main/leaderboard) dan quest, tanpa
-   perlu koneksi socket yang persisten.
+1. **Realtime (Socket.IO)** — room/matchmaking, draft phase, match berjalan,
+   plus Plaza chat sosial global (bukan per room).
+2. **HTTP JSON** — daily challenge (baca/main/leaderboard), quest, dan
+   metadata NFT skill, tanpa perlu koneksi socket yang persisten.
 
 Keduanya jalan di port yang sama (`PORT`, default `3001`), lihat
 `server/src/index.ts`.
@@ -79,6 +80,8 @@ socket.emit("room:create", { nickname: "Alice" }, (res) => {
 | `loadout:set` | `{ skillIds: number[] }` | `{ view: LobbyView }` | Set loadout (0-2 skill id unik) — hanya room `mode: "standard"`, fase `lobby`/`draft`, wajib sudah `wallet:link` (lihat "Mode room & Loadout" di bawah). |
 | `skill:use` | `{ effectType: string, args?: { cellIndex?: number, a?: number, b?: number } }` | `{ view: MatchView }` | Pakai 1 skill dari loadout sendiri saat giliran sendiri. Lihat "Skill in-match" di bawah. |
 | `skill:respond` | `{ nullify: boolean }` | `{ view: MatchView }` | Jawab window Nullify (`true` = batalkan skill lawan, `false` = biarkan). Lihat "Skill in-match" di bawah. |
+| `plaza:send` | `{ nickname: string, text: string, skillId?: number }` | `{ message: PlazaMessage }` | Kirim pesan ke Plaza (chat sosial GLOBAL, bukan per room) — jalan tanpa join room/wallet sama sekali (guest play). Lihat "Plaza chat" di bawah. |
+| `plaza:history` | `{}` | `{ messages: PlazaMessage[] }` | Ambil buffer riwayat Plaza (maks 100 pesan terakhir, urut lama→baru). Lihat "Plaza chat" di bawah. |
 
 ### Tabel event: server → client
 
@@ -90,6 +93,7 @@ socket.emit("room:create", { nickname: "Alice" }, (res) => {
 | `quest:completed` | `{ questId: string, title: string }` | Dikirim ke **socket milik pemain itu saja** (bukan broadcast room) setiap kali quest pemain itu baru saja selesai — termasuk quest bertipe `skill_used`. |
 | `skill:pending` | `{ playerId: string, effectType: string, awaiting: string[] }` | Broadcast ke room saat sebuah skill use membuka window Nullify (sekali, saat window terbuka — lihat "Skill in-match" di bawah). |
 | `skill:resolved` | `{ playerId: string, effectType: string, nullified: boolean, nullifiedBy?: string }` | Broadcast ke room saat skill yang pending selesai — dibatalkan (`nullified: true`, `nullifiedBy` terisi) atau berhasil (`nullified: false`), termasuk saat window 15 detik habis tanpa jawaban. |
+| `plaza:message` | `PlazaMessage` | Broadcast ke **SEMUA socket yang connect** (`io.emit`, bukan cuma satu room) setiap kali `plaza:send` sukses — termasuk ke pengirim sendiri. Lihat "Plaza chat" di bawah. |
 
 ### `LobbyView`
 
@@ -359,6 +363,67 @@ socket.on("skill:resolved", ({ playerId, effectType, nullified, nullifiedBy }) =
 });
 ```
 
+### Plaza chat
+
+Ruang diskusi/showcase **global** (CONCEPT.md §7.4b) — bukan chat per room
+match. Tidak butuh `room:create`/`room:join`/`wallet:link` sama sekali,
+guest play penuh (CLAUDE.md): siapa pun yang connect socket bisa langsung
+`plaza:send`/`plaza:history`.
+
+```ts
+interface PlazaMessage {
+  id: string;
+  nickname: string;
+  text: string;
+  skillId?: number;   // skill yang dipamerkan (FE render sebagai kartu, bukan teks) — lihat di bawah
+  at: number;          // Date.now() saat pesan disimpan server
+}
+```
+
+- **`plaza:send { nickname, text, skillId? }`** — server yang mengisi
+  `id`/`at` (client tidak bisa memalsukannya). Validasi (di
+  `server/src/plaza/plaza.ts`, pure & unit-tested terpisah dari socket):
+  - `nickname`: 1-24 karakter setelah `trim()`.
+  - `text`: 1-280 karakter setelah `trim()`.
+  - `skillId` (opsional): integer ≥ 1. **Tidak** diverifikasi kepemilikan
+    di sisi server saat ini — ini murni sinyal "pamer/promosi kartu skill"
+    (CONCEPT.md §7.4b: "jual Wild Daub rare, cek profilku"), FE yang
+    merender kartunya; verifikasi ownership sungguhan menyusul bareng
+    marketplace P2P.
+  - **Rate limit**: minimal 2000ms antar pesan dari socket yang sama
+    (per `socket.id`, bukan per nickname/wallet) — pesan yang ditolak
+    karena payload invalid TIDAK memakan slot rate limit (masih boleh
+    langsung coba lagi dengan payload yang benar).
+  - Gagal validasi ATAU kena rate limit → ack `{ ok: false, error }` dengan
+    pesan jelas (mis. "Rate limited - tunggu 1230ms lagi sebelum kirim
+    pesan lagi").
+  - Sukses → ack `{ message: PlazaMessage }`, lalu `plaza:message` di-
+    broadcast (`io.emit`, **bukan** ke satu room) ke SEMUA socket yang
+    sedang connect, termasuk pengirim sendiri.
+- **`plaza:history {}`** — ack `{ messages: PlazaMessage[] }`, isi ring
+  buffer in-memory (maks 100 pesan terakhir, urut lama→baru). Berguna untuk
+  mengisi riwayat chat begitu client baru connect/buka Plaza.
+
+```ts
+socket.on("plaza:message", (msg) => {
+  // render 1 baris chat; kalau msg.skillId ada, render kartu skill-nya
+});
+
+socket.emit("plaza:history", {}, (res) => {
+  if (res.ok) res.messages.forEach(renderPlazaMessage);
+});
+
+socket.emit("plaza:send", { nickname: "Alice", text: "jual Wild Daub rare, cek profilku", skillId: 7 }, (res) => {
+  if (!res.ok) return console.error(res.error); // mis. rate limited, text kosong/kepanjangan
+});
+```
+
+// ponytail: buffer in-memory per proses server (hilang saat restart), satu
+instance per server (`createPlazaStore()`, bukan singleton modul) supaya
+setiap server/test punya riwayat & rate-limit sendiri. Moderasi report/mute
+menyusul (CONCEPT.md §7.4b) — untuk sekarang cuma rate limit + batas
+panjang pesan.
+
 ---
 
 ## 2. HTTP JSON API
@@ -369,6 +434,11 @@ Semua response berbentuk amplop JSON seragam:
 { "ok": true, "data": ... }
 { "ok": false, "error": "pesan error" }
 ```
+
+**Kecuali** `GET /metadata/:id.json` (lihat di bawah) — endpoint itu balas
+metadata ERC-1155 mentah, TANPA amplop, karena dipakai langsung sebagai
+`SkillCollection.uri()` oleh wallet/marketplace yang mengharapkan format
+metadata standar apa adanya.
 
 - `Access-Control-Allow-Origin: *` selalu ada di setiap response (termasuk
   error), plus preflight `OPTIONS` di-handle untuk semua path.
@@ -470,6 +540,59 @@ curl http://localhost:3001/quests/progress/<playerId>
 { "ok": true, "data": [ { "questId": "daily_win_1_match", "playerId": "...", "periodKey": "2026-08-01", "count": 1, "completed": true } ] }
 ```
 
+### `GET /metadata/:id.json`
+
+Metadata ERC-1155 standar untuk satu skill/skin — dipakai langsung sebagai
+`SkillCollection.uri()` on-chain (CONCEPT.md §3 "identitas premium"). `:id`
+menerima DUA format, keduanya resolve ke skillId yang sama:
+
+- **Desimal biasa**: `/metadata/7.json`
+- **Hex 64-digit lowercase zero-padded**, ala substitusi `{id}` ERC-1155:
+  `/metadata/0000000000000000000000000000000000000000000000000000000000000007.json`
+
+Sumber data: `SkillRegistry.getSkill` (via `chain/reader.ts`'s
+`getSkillById`), alamat registry di-resolve dengan cara yang SAMA dengan
+`loadout:set` (lihat §4 di bawah — env var atau `contracts/deployments/91342.json`).
+Hasil di-cache in-memory per skillId, TTL 5 menit (`Cache-Control: public,
+max-age=300` juga dikirim ke client/CDN).
+
+**Response BUKAN amplop `{ok,data}`** — JSON metadata mentah langsung:
+
+```bash
+curl http://localhost:3001/metadata/1.json
+```
+
+```json
+{
+  "name": "Wild Daub",
+  "description": "Marks one cell on your own board without that number being called.",
+  "image": "https://api.thebingofi.xyz/assets/skills/wild-daub.png",
+  "animation_url": "https://api.thebingofi.xyz/assets/skills/wild-daub.webm",
+  "attributes": [
+    { "trait_type": "Effect", "value": "WILD_DAUB" },
+    { "trait_type": "Rarity", "value": 10 },
+    { "trait_type": "Charges", "value": 1 },
+    { "trait_type": "Cooldown", "value": 0 },
+    { "trait_type": "Max Per Loadout", "value": 1 }
+  ]
+}
+```
+
+`name` diturunkan generik dari `effectType` (`WILD_DAUB` → `"Wild Daub"`,
+bekerja untuk skill masa depan juga tanpa lookup table); `description`
+Bahasa Inggris satu kalimat per efek (5 skill awal, CLAUDE.md/CONCEPT.md
+§3). `image`/`animation_url` MEMANG placeholder — slot URL untuk tim visual
+drop asset asli nanti (CONCEPT.md §3), tanpa perlu ubah kontrak/server.
+
+Error (masih amplop `{ok:false,error}` biasa, bukan raw):
+- Id tidak valid (bukan desimal & bukan hex 64-digit) → `400`.
+- Skill tidak terdaftar di registry → `404`.
+- Chain belum dikonfigurasi (lihat §3/§4 di bawah) → `503`.
+
+```bash
+curl http://localhost:3001/metadata/999.json    # -> 404 { "ok": false, "error": "Skill 999 not found" }
+```
+
 ---
 
 ## 3. Environment Variables
@@ -483,24 +606,27 @@ curl http://localhost:3001/quests/progress/<playerId>
 | `MARKETPLACE_ADDRESS` | chain reader | zero address |
 
 Server realtime + HTTP API TIDAK butuh env apa pun untuk jalan (guest play,
-tanpa wallet, room `mode: "casual"`). Env chain hanya relevan begitu room
-`mode: "standard"` dipakai (lihat bagian 4 & "Mode room & Loadout" di atas).
-Karena kontrak SUDAH live di GIWA Sepolia
-(`contracts/deployments/91342.json` — lihat CLAUDE.md), mode `"standard"`
-jalan bahkan tanpa env var sama sekali di fresh checkout manapun; env var
-hanya perlu diisi untuk override (mis. target chain lain / alamat baru).
+tanpa wallet, room `mode: "casual"`, Plaza chat). Env chain hanya relevan
+begitu room `mode: "standard"` ATAU `GET /metadata/:id.json` dipakai (lihat
+bagian 4 & "Mode room & Loadout" di atas). Karena kontrak SUDAH live di
+GIWA Sepolia (`contracts/deployments/91342.json` — lihat CLAUDE.md), mode
+`"standard"` dan endpoint metadata jalan bahkan tanpa env var sama sekali
+di fresh checkout manapun; env var hanya perlu diisi untuk override (mis.
+target chain lain / alamat baru).
 
 ---
 
 ## 4. Chain Reader (read-only, `server/src/chain/`)
 
 Verifikasi ownership skill saat matchmaking (CLAUDE.md: "verifikasi
-ownership skill saat matchmaking via read-only RPC/indexer"). Sekarang
-ditempel ke `loadout:set` (lihat "Mode room & Loadout" di atas) lewat
-dependency injection — realtime layer (`server/src/realtime/`) sendiri
-TIDAK PERNAH membangun client viem; ia hanya menerima fungsi verifier lewat
-`createRealtimeServer(httpServer, { verifyLoadout })`, supaya bisa ditest
-tanpa chain sungguhan.
+ownership skill saat matchmaking via read-only RPC/indexer") + baca katalog
+untuk metadata NFT. Ditempel ke `loadout:set` dan `GET /metadata/:id.json`
+lewat dependency injection — baik realtime layer (`server/src/realtime/`)
+maupun HTTP layer (`server/src/api/http.ts`) sendiri TIDAK PERNAH membangun
+client viem; masing-masing hanya menerima fungsi lewat
+`createRealtimeServer(httpServer, { verifyLoadout })` /
+`createHttpHandler({ resolveSkill })`, supaya bisa ditest tanpa chain
+sungguhan.
 
 - `config.ts` — `giwaSepolia` (chain id `91342`), `loadChainConfig(env)`,
   `createChainClient(cfg)` (viem `PublicClient`).
@@ -509,6 +635,10 @@ tanpa chain sungguhan.
   `SkillCollection.balanceOfBatch/uri`, `Marketplace.sales`.
 - `reader.ts`:
   - `getCatalog(client, registryAddress)` → semua `SkillDef` terdaftar.
+  - `getSkillById(client, registryAddress, skillId)` → `SkillDef | undefined`
+    untuk SATU id (cek `exists` dulu, jadi `undefined` untuk id yang belum
+    terdaftar, bukan throw) — dipakai `GET /metadata/:id.json` supaya tidak
+    perlu tarik seluruh katalog untuk satu skill.
   - `getOwnedSkillIds(client, collectionAddress, owner, skillIds)` → subset
     yang `balance > 0`.
   - `verifyLoadout(client, cfg, owner, loadout)` → `{ valid, reason? }`:
@@ -516,15 +646,24 @@ tanpa chain sungguhan.
     `maxPerLoadout` per skill.
   - `verifyLoadoutPure(...)` — logic murni tanpa network, dipakai
     `verifyLoadout` di baliknya, gampang ditest.
-- `defaultVerifier.ts` — `createDefaultLoadoutVerifier(env?, deploymentsPath?)`:
-  resolusi produksi dari `LoadoutVerifier` yang di-wire `server/src/index.ts`
-  ke `createRealtimeServer`. Urutan: (1) `REGISTRY_ADDRESS` +
-  `COLLECTION_ADDRESS` dari env kalau ADA DUA-DUANYA, lalu (2) fallback baca
-  `contracts/deployments/91342.json` dari repo root kalau file itu ada, lalu
-  (3) `undefined` kalau tidak ada satu pun — pada titik itu `room:create`
-  dengan `mode: "standard"` ditolak dengan pesan "Chain belum dikonfigurasi".
-  Ini SATU-SATUNYA tempat di `server/` yang membangun client viem sungguhan;
-  `realtime/` sendiri tidak pernah meng-importnya.
+- `defaultVerifier.ts` — SATU-SATUNYA tempat di `server/` yang membangun
+  client viem sungguhan (`realtime/`/`api/` sendiri tidak pernah
+  meng-importnya):
+  - `resolveChainAddresses(env?, deploymentsPath?)` → `{ registryAddress,
+    collectionAddress } | undefined`. Urutan resolusi (dipakai KEDUA fungsi
+    di bawah, jadi `loadout:set` dan `GET /metadata/:id.json` selalu
+    konsisten alamatnya): (1) `REGISTRY_ADDRESS` + `COLLECTION_ADDRESS` dari
+    env kalau ADA DUA-DUANYA, lalu (2) fallback baca
+    `contracts/deployments/91342.json` dari repo root kalau file itu ada,
+    lalu (3) `undefined` kalau tidak ada satu pun.
+  - `createDefaultLoadoutVerifier(env?, deploymentsPath?)` — resolusi
+    produksi dari `LoadoutVerifier` yang di-wire `server/src/index.ts` ke
+    `createRealtimeServer`. `undefined` → `room:create` dengan `mode:
+    "standard"` ditolak dengan pesan "Chain belum dikonfigurasi".
+  - `createDefaultSkillMetadataReader(env?, deploymentsPath?)` — resolusi
+    produksi dari resolver `GET /metadata/:id.json` yang di-wire
+    `server/src/index.ts` ke `createHttpHandler`. `undefined` → endpoint
+    balas `503`.
 
 `client` di semua fungsi `reader.ts` adalah interface tipis
 (`ChainReadClient`, cuma butuh `readContract`) — sebuah viem `PublicClient`
@@ -532,7 +671,7 @@ sungguhan (`createChainClient`) memenuhinya, begitu juga mock di unit test.
 Demikian juga `realtime/server.ts`'s `LoadoutVerifier` — interface tipis
 `(owner, skillIds) => Promise<{ valid, reason? }>` yang cocok secara
 struktural dengan `verifyLoadout`, jadi bisa di-mock total di test tanpa
-menyentuh chain sama sekali (lihat `realtime.test.ts`).
+menyentuh chain sama sekali (lihat `realtime.test.ts`/`http.test.ts`).
 
 **`resolveLoadout`** (skillIds → charge nyata saat match mulai, lihat
 "Skill in-match" di atas) adalah DI terpisah dengan pola yang sama:

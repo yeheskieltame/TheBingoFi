@@ -905,3 +905,97 @@ test("winning via a skill (Wild Daub completing the 5th line) still emits match:
     );
   });
 });
+
+// -- plaza (global chat, CONCEPT.md §7.4b) -------------------------------
+//
+// Global and unauthenticated (guest play works, CLAUDE.md) - no room:create
+// or wallet:link needed, unlike everything above. Pure validation/rate-limit
+// logic is unit tested directly in plaza/plaza.test.ts; this section only
+// exercises the transport: broadcast fan-out, ack shape, boundary rejects.
+
+test("plaza:send broadcasts plaza:message to every connected socket, including the sender", async () => {
+  const a = await connectClient();
+  const b = await connectClient();
+
+  const aMsg = waitForEvent<Record<string, unknown>>(a, "plaza:message");
+  const bMsg = waitForEvent<Record<string, unknown>>(b, "plaza:message");
+
+  const res = await emit(a, "plaza:send", { nickname: "Alice", text: "gm plaza" });
+  assert.equal(res.ok, true);
+  if (!res.ok) throw new Error("unreachable");
+  const sentMessage = res.message as { nickname: string; text: string; id: string };
+  assert.equal(sentMessage.nickname, "Alice");
+  assert.equal(sentMessage.text, "gm plaza");
+  assert.equal(typeof sentMessage.id, "string");
+
+  assert.deepEqual(await aMsg, sentMessage);
+  assert.deepEqual(await bMsg, sentMessage);
+});
+
+test("plaza:send accepts an optional skillId, attached to the broadcast message", async () => {
+  const a = await connectClient();
+  const res = await emit(a, "plaza:send", { nickname: "Alice", text: "check my skill", skillId: 3 });
+  assert.equal(res.ok, true);
+  if (!res.ok) throw new Error("unreachable");
+  assert.equal((res.message as { skillId?: number }).skillId, 3);
+});
+
+test("plaza:history returns messages already sent, oldest -> newest", async () => {
+  const a = await connectClient();
+  const b = await connectClient(); // separate socket - avoids the 2s rate limit for the second send
+
+  const firstRes = await emit(a, "plaza:send", { nickname: "Alice", text: "first" });
+  const secondRes = await emit(b, "plaza:send", { nickname: "Bob", text: "second" });
+  assert.equal(firstRes.ok, true);
+  assert.equal(secondRes.ok, true);
+
+  const historyRes = await emit(a, "plaza:history", {});
+  assert.equal(historyRes.ok, true);
+  if (!historyRes.ok) throw new Error("unreachable");
+  const texts = (historyRes.messages as { text: string }[]).map((m) => m.text);
+  assert.deepEqual(texts, ["first", "second"]);
+});
+
+test("plaza:send rejects an empty text", async () => {
+  const a = await connectClient();
+  const res = await emit(a, "plaza:send", { nickname: "Alice", text: "" });
+  assert.equal(res.ok, false);
+});
+
+test("plaza:send rejects text longer than 280 characters", async () => {
+  const a = await connectClient();
+  const res = await emit(a, "plaza:send", { nickname: "Alice", text: "x".repeat(281) });
+  assert.equal(res.ok, false);
+});
+
+test("plaza:send rejects a nickname longer than 24 characters", async () => {
+  const a = await connectClient();
+  const res = await emit(a, "plaza:send", { nickname: "x".repeat(25), text: "hi" });
+  assert.equal(res.ok, false);
+});
+
+test("plaza:send rejects an invalid skillId", async () => {
+  const a = await connectClient();
+  const res = await emit(a, "plaza:send", { nickname: "Alice", text: "hi", skillId: -1 });
+  assert.equal(res.ok, false);
+});
+
+test("plaza:send is rate limited to 1 message per 2s per socket", async () => {
+  const a = await connectClient();
+  const first = await emit(a, "plaza:send", { nickname: "Alice", text: "one" });
+  assert.equal(first.ok, true);
+
+  const second = await emit(a, "plaza:send", { nickname: "Alice", text: "two" });
+  assert.equal(second.ok, false);
+  if (second.ok) throw new Error("unreachable");
+  assert.match(second.error, /rate limit/i);
+});
+
+test("plaza:send rate limit is per socket, not global", async () => {
+  const a = await connectClient();
+  const b = await connectClient();
+  const first = await emit(a, "plaza:send", { nickname: "Alice", text: "one" });
+  const fromOther = await emit(b, "plaza:send", { nickname: "Bob", text: "hi" });
+  assert.equal(first.ok, true);
+  assert.equal(fromOther.ok, true);
+});

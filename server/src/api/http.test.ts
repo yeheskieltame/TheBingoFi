@@ -11,8 +11,9 @@ import assert from "node:assert/strict";
 import { createServer, type Server as NodeHttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
+import type { SkillDef } from "../chain/reader.ts";
 import { BOARD_SIZE } from "../engine/index.ts";
-import { createHttpHandler } from "./http.ts";
+import { createHttpHandler, type HttpHandlerOptions } from "./http.ts";
 
 type Envelope = { ok: true; data: unknown } | { ok: false; error: string };
 
@@ -212,6 +213,139 @@ test("GET /quests/progress/:playerId returns [] for a player with no recorded pr
   assert.equal(status, 200);
   assert.equal(body.ok, true);
   if (body.ok) assert.deepEqual(body.data, []);
+});
+
+// -- GET /metadata/:id.json ------------------------------------------------
+//
+// Uses its own server per test (via withHandler) rather than the shared
+// beforeEach one above, since each test needs a different (mocked)
+// resolveSkill - see api/http.ts's HttpHandlerOptions. The shared server
+// (created with no opts, so resolveSkill is undefined) is reused for the
+// "chain not configured" 503 case.
+
+async function withHandler<T>(opts: HttpHandlerOptions, body: (baseUrl: string) => Promise<T>): Promise<T> {
+  const server = createServer(createHttpHandler(opts));
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const port = (server.address() as AddressInfo).port;
+  try {
+    return await body(`http://127.0.0.1:${port}`);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+function skillDefFixture(overrides: Partial<SkillDef> = {}): SkillDef {
+  return {
+    skillId: 1,
+    effectType: "WILD_DAUB",
+    charges: 1,
+    cooldown: 0,
+    maxPerLoadout: 1,
+    rarity: 10,
+    active: true,
+    metadataURI: "ipfs://x",
+    ...overrides,
+  };
+}
+
+test("GET /metadata/:id.json returns ERC-1155 metadata directly, no {ok,data} envelope", async () => {
+  await withHandler({ resolveSkill: async (id) => (id === 1 ? skillDefFixture() : undefined) }, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/metadata/1.json`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("cache-control"), "public, max-age=300");
+    const body = (await res.json()) as Record<string, unknown>;
+    assert.equal(body.name, "Wild Daub");
+    assert.equal(typeof body.description, "string");
+    assert.equal(body.image, "https://api.thebingofi.xyz/assets/skills/wild-daub.png");
+    assert.equal(body.animation_url, "https://api.thebingofi.xyz/assets/skills/wild-daub.webm");
+    assert.equal("ok" in body, false);
+    assert.equal("data" in body, false);
+  });
+});
+
+test("GET /metadata/:id.json decodes bytes32 hex effectType from the real chain reader", async () => {
+  // On-chain effectType arrives as 0x-padded bytes32 hex, not "WILD_DAUB".
+  const wildDaubHex = `0x${Buffer.from("WILD_DAUB").toString("hex").padEnd(64, "0")}`;
+  await withHandler({ resolveSkill: async () => skillDefFixture({ effectType: wildDaubHex }) }, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/metadata/1.json`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { name: string; image: string; attributes: { trait_type: string; value: unknown }[] };
+    assert.equal(body.name, "Wild Daub");
+    assert.equal(body.image, "https://api.thebingofi.xyz/assets/skills/wild-daub.png");
+    assert.equal(body.attributes.find((a) => a.trait_type === "Effect")?.value, "WILD_DAUB");
+  });
+});
+
+test("GET /metadata/:id.json attributes carry Effect/Rarity/Charges/Cooldown/Max Per Loadout", async () => {
+  await withHandler(
+    {
+      resolveSkill: async () =>
+        skillDefFixture({ effectType: "DOUBLE_CALL", rarity: 5, charges: 2, cooldown: 3, maxPerLoadout: 2 }),
+    },
+    async (baseUrl) => {
+      const res = await fetch(`${baseUrl}/metadata/2.json`);
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { attributes: unknown };
+      assert.deepEqual(body.attributes, [
+        { trait_type: "Effect", value: "DOUBLE_CALL" },
+        { trait_type: "Rarity", value: 5 },
+        { trait_type: "Charges", value: 2 },
+        { trait_type: "Cooldown", value: 3 },
+        { trait_type: "Max Per Loadout", value: 2 },
+      ]);
+    },
+  );
+});
+
+test("GET /metadata/<64-hex-digit id>.json resolves the same skill as the decimal form", async () => {
+  await withHandler({ resolveSkill: async (id) => (id === 1 ? skillDefFixture() : undefined) }, async (baseUrl) => {
+    const hexId = "1".padStart(64, "0");
+    const res = await fetch(`${baseUrl}/metadata/${hexId}.json`);
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { name: string };
+    assert.equal(body.name, "Wild Daub");
+  });
+});
+
+test("GET /metadata/:id.json for an unknown skill is a 404 JSON error", async () => {
+  await withHandler({ resolveSkill: async () => undefined }, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/metadata/999.json`);
+    assert.equal(res.status, 404);
+    const body = (await res.json()) as { ok: boolean };
+    assert.equal(body.ok, false);
+  });
+});
+
+test("GET /metadata/:id.json for a malformed id is a 400", async () => {
+  await withHandler({ resolveSkill: async () => skillDefFixture() }, async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/metadata/not-an-id.json`);
+    assert.equal(res.status, 400);
+  });
+});
+
+test("GET /metadata/:id.json is a 503 when chain isn't configured", async () => {
+  const { status, body } = await get("/metadata/1.json");
+  assert.equal(status, 503);
+  assert.equal(body.ok, false);
+});
+
+test("GET /metadata/:id.json caches per id within the TTL (resolveSkill called once)", async () => {
+  let calls = 0;
+  await withHandler(
+    {
+      resolveSkill: async () => {
+        calls++;
+        return skillDefFixture();
+      },
+    },
+    async (baseUrl) => {
+      const first = await fetch(`${baseUrl}/metadata/1.json`);
+      const second = await fetch(`${baseUrl}/metadata/1.json`);
+      assert.equal(first.status, 200);
+      assert.equal(second.status, 200);
+      assert.equal(calls, 1);
+    },
+  );
 });
 
 // -- 404 + method handling ------------------------------------------------

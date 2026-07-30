@@ -60,12 +60,18 @@ Kontrak antar layer dijaga compiler, bukan dokumen:
 
 | Kontrak | Address |
 |---|---|
-| SkillRegistry | [`0xEb1d19B0d95b73Ef1A6e00B2D83f8F69999e2BD4`](https://sepolia-explorer.giwa.io/address/0xEb1d19B0d95b73Ef1A6e00B2D83f8F69999e2BD4) |
-| SkillFactory | [`0xa9F2f90b5275e217a8b76049fFF4A0c6EC8Ead0D`](https://sepolia-explorer.giwa.io/address/0xa9F2f90b5275e217a8b76049fFF4A0c6EC8Ead0D) |
-| SkillCollection | [`0x1204602e50af5d714Fc1A8c6d7EbFa01bEEC3B10`](https://sepolia-explorer.giwa.io/address/0x1204602e50af5d714Fc1A8c6d7EbFa01bEEC3B10) |
-| Marketplace | [`0x127b3d2F1b15720BAF6Df299b4e5E7f50c785c9d`](https://sepolia-explorer.giwa.io/address/0x127b3d2F1b15720BAF6Df299b4e5E7f50c785c9d) |
+| SkillRegistry | [`0x453Ea80704A0d28c6a174c2eDACf49762813f308`](https://sepolia-explorer.giwa.io/address/0x453Ea80704A0d28c6a174c2eDACf49762813f308) |
+| SkillFactory | [`0x1923eBbDd522c7FAd8BfCD8741372bff62109871`](https://sepolia-explorer.giwa.io/address/0x1923eBbDd522c7FAd8BfCD8741372bff62109871) |
+| SkillCollection | [`0x58ABFFcA5C517f93B0116b5b1b1b6AF914148077`](https://sepolia-explorer.giwa.io/address/0x58ABFFcA5C517f93B0116b5b1b1b6AF914148077) |
+| Marketplace | [`0xb3f468350c16906AA4E201CE4f7D464e0fb46D48`](https://sepolia-explorer.giwa.io/address/0xb3f468350c16906AA4E201CE4f7D464e0fb46D48) |
 
-Katalog sudah berisi 5 skill awal (id 1–5: Wild Daub, Double Call, Ghost Call, Cell Swap, Nullify). Machine-readable: `contracts/deployments/91342.json`.
+Marketplace v2: **dynamic pricing** on-chain (scarcity ramp + demand decay,
+lihat `CONCEPT.md` §4 & `contracts/README.md`) — harga beli tiap skill
+selalu di-quote lewat `Marketplace.priceOf(skillId)`, tidak statis lagi.
+Katalog sudah berisi 5 skill awal (id 1–5: Wild Daub, Double Call, Ghost
+Call, Cell Swap, Nullify) dengan supply & basePrice bertingkat untuk
+mendemokan scarcity tier — dari 1000 unit @0.0005 ETH (Wild Daub) sampai 10
+unit @0.01 ETH (Nullify, super rare). Machine-readable: `contracts/deployments/91342.json`.
 
 ## Struktur
 
@@ -86,7 +92,7 @@ pnpm --filter @thebingofi/web dev             # Next.js di :3000
 ## Test
 
 ```bash
-pnpm test:contracts   # forge test (34 test, coverage 100%)
+pnpm test:contracts   # forge test (52 test, coverage 100%)
 pnpm test:server      # node --test (94 test: engine, daily, quest, realtime, http, chain)
 ```
 
