@@ -103,6 +103,18 @@ pnpm test:server      # node --test (217 test: engine, skill, bot, daily, quest,
 - `server/API.md` — kontrak lengkap: event Socket.IO (typed, import dari `@thebingofi/server/protocol`) + HTTP API (daily challenge, leaderboard, quests).
 - `contracts/abi/*.json` + `contracts/deployments/91342.json` — ABI & address untuk wagmi/viem (lihat `contracts/README.md`).
 
+## Deploy Server (Railway)
+
+Server live: **https://server-production-623e.up.railway.app** (health: `/health`).
+
+Konfigurasi ada di `railway.json` root (start: `pnpm --filter @thebingofi/server start`; Node ≥24 via `server/package.json` engines — dibutuhkan untuk native TS type-stripping). Deploy dilakukan dari **root repo** supaya `contracts/deployments/91342.json` ikut terangkut — chain reader server resolve address dari file itu tanpa env tambahan. Redeploy:
+
+```bash
+railway up --service server --detach   # butuh railway login + project link
+```
+
+Catatan production yang tersisa: room/leaderboard/quest/plaza masih in-memory (hilang saat restart/redeploy) — butuh Redis/DB sebelum trafik nyata; RPC masih endpoint publik GIWA (rate-limited).
+
 ## Deploy Kontrak (GIWA Sepolia)
 
 Salin `.env.example` → `.env`, isi `PRIVATE_KEY` (jangan pernah commit), lalu:
