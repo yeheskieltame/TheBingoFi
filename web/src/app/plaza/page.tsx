@@ -87,8 +87,8 @@ export default function PlazaPage() {
       </header>
 
       {!nickname ? (
-        <form onSubmit={handleSaveNickname} className="space-y-2 rounded-3xl border border-white/10 bg-night/55 p-5 backdrop-blur-md">
-          <label htmlFor="plaza-nickname" className="font-display text-sm font-bold text-frost">
+        <form onSubmit={handleSaveNickname} className="space-y-3 rounded-3xl border border-white/10 bg-night/55 p-5 backdrop-blur-md">
+          <label htmlFor="plaza-nickname" className="block font-display text-sm font-bold text-frost">
             {t.nicknamePrompt}
           </label>
           <div className="flex gap-2">

@@ -22,7 +22,7 @@ export default function NicknameField({ id, value, onChange }: NicknameFieldProp
   const empty = value.trim().length === 0;
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       <label htmlFor={id} className="block text-xs uppercase tracking-wide text-ice/45">
         {t.nicknameLabel}
       </label>
