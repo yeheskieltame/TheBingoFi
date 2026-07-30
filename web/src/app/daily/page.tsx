@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import DailyLeaderboard from "@/components/DailyLeaderboard";
 import DailyResult from "@/components/DailyResult";
+import Dialog from "@/components/Dialog";
 import DraftBoard from "@/components/DraftBoard";
 import { useDailyChallenge } from "@/hooks/useDailyChallenge";
 import { useDraftBoard } from "@/hooks/useDraftBoard";
@@ -19,6 +20,8 @@ export default function DailyPage() {
   const draft = useDraftBoard();
   const [nickname, setNickname] = useState(() => getStoredNickname());
   const [copied, setCopied] = useState(false);
+  /** Leaderboard jadi modal, bukan kolom di samping: kartu harian tetap satu-satunya fokus di tengah layar. */
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
 
   function handlePlay(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -36,7 +39,22 @@ export default function DailyPage() {
   }
 
   return (
-    <main className="mx-auto max-w-md space-y-6 py-4 text-center">
+    <main className="mx-auto max-w-5xl py-6">
+      {/* Latar art satu halaman, sama dengan / dan /play - sebelumnya sisi kiri
+          kanan halaman ini hitam kosong sementara kartunya sendiri ber-art. */}
+      <div aria-hidden className="fixed inset-0 -z-10">
+        <Image
+          src="/images/background/bg.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover object-top"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-night/50 via-night/80 to-night" />
+      </div>
+
+      <div className="mx-auto w-full max-w-md space-y-5 text-center">
       {/* Kartu utama: art potret jadi latar KARTU (bukan latar halaman).
           Overlay gelap bergradasi wajib - separuh bawah art itu salju terang,
           teks frost tidak akan terbaca tanpa itu. */}
@@ -46,7 +64,7 @@ export default function DailyPage() {
           alt=""
           fill
           priority
-          sizes="(max-width: 640px) 100vw, 448px"
+          sizes="(max-width: 1024px) 100vw, 416px"
           className="object-cover object-center"
         />
         <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-night/55 via-night/70 to-night/90" />
@@ -63,7 +81,7 @@ export default function DailyPage() {
             ) : null}
 
             <h1 className="font-display text-2xl font-bold tracking-tight text-frost sm:text-3xl">
-              {t.title} <span aria-hidden>❄️</span>
+              {t.title}
             </h1>
             <p className="mx-auto max-w-xs text-sm leading-relaxed text-frost/65">{t.subtitle}</p>
           </header>
@@ -124,11 +142,22 @@ export default function DailyPage() {
         </div>
       </section>
 
-      {daily.leaderboard ? (
-        <DailyLeaderboard entries={daily.leaderboard} />
-      ) : (
-        !daily.error && <p className="text-sm text-ice/40">{strings[locale].common.loading}</p>
-      )}
+        <button
+          type="button"
+          onClick={() => setLeaderboardOpen(true)}
+          className="rounded-full border border-white/15 bg-night/50 px-5 py-2 font-display text-sm font-semibold text-ice backdrop-blur-md transition-colors hover:border-white/35 hover:text-frost"
+        >
+          🏆 {t.leaderboard.title}
+        </button>
+      </div>
+
+      <Dialog open={leaderboardOpen} title={t.leaderboard.title} onClose={() => setLeaderboardOpen(false)}>
+        {daily.leaderboard ? (
+          <DailyLeaderboard entries={daily.leaderboard} />
+        ) : (
+          <p className="text-center text-sm text-ice/40">{strings[locale].common.loading}</p>
+        )}
+      </Dialog>
     </main>
   );
 }

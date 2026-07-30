@@ -6,7 +6,7 @@ import { useEffect, type ReactNode } from "react";
 import { useLocale } from "@/hooks/useLocale";
 import { strings } from "@/i18n/strings";
 
-export interface ModeDialogProps {
+export interface DialogProps {
   readonly open: boolean;
   readonly title: string;
   readonly description?: string;
@@ -15,16 +15,16 @@ export interface ModeDialogProps {
 }
 
 /**
- * Dumb: modal opsi mode main. Opsi sengaja TIDAK dirender inline di bawah
- * deretan kartu - kalau inline, memilih kartu mendorong halaman dan menutupi
- * art; sebagai modal, deretan kartu tetap jadi fokus dan opsinya muncul di
- * atasnya lalu hilang lagi.
+ * Dumb: modal serbaguna. Dipakai untuk opsi mode main (/) dan leaderboard
+ * harian (/daily) - keduanya konten sekunder yang kalau dirender inline malah
+ * mendorong halaman dan menutupi art, sementara sebagai modal ia muncul saat
+ * diminta lalu hilang lagi.
  *
  * Animasi: overlay fade + panel spring (motion). Esc dan klik overlay menutup;
  * `overflow-hidden` di <body> dipasang selama terbuka supaya latar tidak ikut
  * ter-scroll di belakang modal.
  */
-export default function ModeDialog({ open, title, description, onClose, children }: ModeDialogProps) {
+export default function Dialog({ open, title, description, onClose, children }: DialogProps) {
   const locale = useLocale();
   const t = strings[locale].common;
 
