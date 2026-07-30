@@ -16,34 +16,36 @@ export default function DailyResult({ number, score, callsToBingo, shareCard, co
   const t = strings[locale].daily.result;
 
   return (
-    <section className="space-y-3 rounded border border-slate-800 bg-slate-900/60 p-4">
-      <h2 className="text-lg font-bold">
+    <section className="mx-auto max-w-xs space-y-4 rounded-2xl border border-white/10 bg-night/45 p-4 text-center backdrop-blur-md">
+      <h2 className="font-display text-lg font-bold text-frost">
         {t.title} #{number}
       </h2>
-      <dl className="flex gap-6">
-        <div>
-          <dt className="text-xs uppercase text-slate-400">{t.score}</dt>
-          <dd className="text-2xl font-bold text-emerald-400">{score}</dd>
+
+      <dl className="grid grid-cols-2 gap-2">
+        <div className="rounded-xl bg-white/5 py-3">
+          <dt className="text-[0.65rem] uppercase tracking-wide text-ice/50">{t.score}</dt>
+          <dd className="font-display text-2xl font-bold text-frost">{score}</dd>
         </div>
-        <div>
-          <dt className="text-xs uppercase text-slate-400">{t.callsToBingo}</dt>
-          <dd className="text-2xl font-bold">{callsToBingo}</dd>
+        <div className="rounded-xl bg-white/5 py-3">
+          <dt className="text-[0.65rem] uppercase tracking-wide text-ice/50">{t.callsToBingo}</dt>
+          <dd className="font-display text-2xl font-bold text-frost">{callsToBingo}</dd>
         </div>
       </dl>
 
-      <div>
-        <h3 className="mb-1 text-sm font-semibold text-slate-300">{t.shareCardTitle}</h3>
-        <pre className="whitespace-pre-wrap rounded border border-slate-700 bg-slate-950 p-3 font-mono text-sm leading-relaxed">
+      <div className="space-y-2">
+        <h3 className="font-display text-xs font-semibold text-ice/60">{t.shareCardTitle}</h3>
+        {/* Grid emoji-nya aset viral - tetap dibuat lega supaya enak di-screenshot. */}
+        <pre className="whitespace-pre-wrap rounded-xl bg-night/60 p-3 text-center font-mono text-sm leading-relaxed text-frost">
           {shareCard}
         </pre>
         <button
           type="button"
           onClick={onCopy}
-          className="mt-2 rounded bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500"
+          className="rounded-full bg-frost px-5 py-1.5 font-display text-xs font-bold text-glacier-ink transition-opacity hover:opacity-85"
         >
           {strings[locale].common.copy}
         </button>
-        {copied && <p className="mt-1 text-xs text-emerald-400">{strings[locale].common.copied}</p>}
+        {copied && <p className="text-xs text-ice/60">{strings[locale].common.copied}</p>}
       </div>
     </section>
   );

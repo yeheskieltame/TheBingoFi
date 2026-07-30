@@ -2,6 +2,7 @@
 
 import { MAX_PLAYERS, MIN_PLAYERS } from "@thebingofi/server/engine";
 import type { RoomSummary } from "@thebingofi/server/protocol";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -17,6 +18,13 @@ const PLAYER_COUNTS = Array.from({ length: MAX_PLAYERS - MIN_PLAYERS + 1 }, (_, 
 const BOT_LEVELS = Array.from({ length: 10 }, (_, i) => i + 1);
 /** Room Browser auto-refresh interval (manual refresh button always available too). */
 const ROOM_LIST_POLL_MS = 10_000;
+
+/** Link sekunder di kaki halaman - konten murni presentasional, jadi ikut di file ini. */
+const FOOTER_LINKS = [
+  { href: "/daily", key: "dailyLink" },
+  { href: "/quests", key: "questsLink" },
+  { href: "/market", key: "marketLink" },
+] as const;
 
 /**
  * Landing page: pick a nickname, then pick HOW to get into a match - Quick
@@ -123,38 +131,56 @@ export default function Home() {
     handleJoinRoom(joinCode);
   }
 
+
   return (
-    <main className="mx-auto max-w-4xl space-y-8">
-      <div className="space-y-2 text-center">
-        <h1 className="text-3xl font-bold text-white">{t.title}</h1>
-        <p className="text-slate-400">{t.tagline}</p>
-      </div>
-
-      <fieldset className="mx-auto max-w-sm space-y-1">
-        <legend className="text-sm font-semibold text-slate-300">{t.nicknameLabel}</legend>
-        <label htmlFor="nickname" className="sr-only">
-          {t.nicknameLabel}
-        </label>
-        <input
-          id="nickname"
-          name="nickname"
-          value={nickname}
-          onChange={(event) => handleNicknameChange(event.target.value)}
-          placeholder={t.nicknameLabel}
-          className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+    <main className="mx-auto max-w-4xl space-y-6 py-4">
+      {/* Hero: art salju + identitas + nickname (satu-satunya input yang wajib
+          diisi sebelum semua jalur masuk match di bawah aktif). */}
+      <section className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
+        <Image
+          src="/images/background/bg.png"
+          alt=""
+          fill
+          priority
+          sizes="100vw"
+          className="scale-105 object-cover object-center"
         />
-        {!hasNickname && <p className="text-xs text-amber-400">{t.nicknameRequiredHint}</p>}
-      </fieldset>
+        <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-night/35 via-night/25 to-night/85" />
 
-      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="relative flex flex-col items-center gap-5 px-5 py-14 text-center sm:py-20">
+          <div className="space-y-2">
+            <h1 className="font-display text-3xl font-bold leading-tight tracking-tight text-frost sm:text-5xl">
+              {t.heroTitle}
+            </h1>
+            <p className="font-display text-base font-medium text-frost/70 sm:text-lg">{t.heroSubtitle}</p>
+          </div>
+
+          <div className="w-full max-w-sm space-y-1.5">
+            <label htmlFor="nickname" className="sr-only">
+              {t.nicknameLabel}
+            </label>
+            <input
+              id="nickname"
+              name="nickname"
+              value={nickname}
+              onChange={(event) => handleNicknameChange(event.target.value)}
+              placeholder={t.nicknamePlaceholder}
+              className="w-full rounded-full bg-frost/95 px-5 py-2.5 text-center font-display font-medium text-glacier-ink placeholder:text-glacier-deep/40 focus:outline-none focus:ring-2 focus:ring-frost"
+            />
+            {!hasNickname && <p className="text-xs text-amber-200">{t.nicknameRequiredHint}</p>}
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-3 sm:grid-cols-2">
         {/* 1. Quick Match (VS Player) */}
-        <section className="space-y-3 rounded border border-slate-800 bg-slate-900/60 p-4">
+        <section className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
           <div>
-            <h2 className="font-semibold text-white">{t.quickMatch.title}</h2>
-            <p className="text-xs text-slate-400">{t.quickMatch.desc}</p>
+            <h2 className="font-display text-base font-bold text-frost">{t.quickMatch.title}</h2>
+            <p className="text-xs text-ice/55">{t.quickMatch.desc}</p>
           </div>
           <div className="space-y-1.5">
-            <p className="text-xs uppercase tracking-wide text-slate-400">{t.quickMatch.sizeLabel}</p>
+            <p className="text-xs uppercase tracking-wide text-ice/45">{t.quickMatch.sizeLabel}</p>
             <div className="flex flex-wrap gap-2">
               {PLAYER_COUNTS.map((size) => (
                 <button
@@ -162,7 +188,7 @@ export default function Home() {
                   type="button"
                   disabled={!hasNickname}
                   onClick={() => handleQuickMatch(size)}
-                  className="rounded border border-indigo-600 px-3 py-1.5 text-sm font-semibold text-indigo-200 hover:bg-indigo-600/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="size-9 rounded-full bg-glacier-deep font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   {size}
                 </button>
@@ -172,13 +198,13 @@ export default function Home() {
         </section>
 
         {/* 4. VS Bot */}
-        <section className="space-y-3 rounded border border-slate-800 bg-slate-900/60 p-4">
+        <section className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
           <div>
-            <h2 className="font-semibold text-white">{t.vsBot.title}</h2>
-            <p className="text-xs text-slate-400">{t.vsBot.desc}</p>
+            <h2 className="font-display text-base font-bold text-frost">{t.vsBot.title}</h2>
+            <p className="text-xs text-ice/55">{t.vsBot.desc}</p>
           </div>
           <div className="space-y-1.5">
-            <p className="text-xs uppercase tracking-wide text-slate-400">{t.vsBot.levelLabel}</p>
+            <p className="text-xs uppercase tracking-wide text-ice/45">{t.vsBot.levelLabel}</p>
             <div className="grid grid-cols-5 gap-1.5">
               {BOT_LEVELS.map((level) => (
                 <button
@@ -186,29 +212,26 @@ export default function Home() {
                   type="button"
                   disabled={!hasNickname}
                   onClick={() => handleVsBot(level)}
-                  className="rounded border border-rose-600 px-2 py-1.5 text-sm font-semibold text-rose-200 hover:bg-rose-600/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-xl border border-white/15 py-1.5 font-display text-sm font-bold text-ice transition-colors hover:border-white/35 hover:text-frost disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   {level}
                 </button>
               ))}
             </div>
-            <p className="text-xs text-slate-500">{t.vsBot.levelHint}</p>
-            <p className="text-xs text-slate-500">{t.vsBot.questHint}</p>
+            <p className="text-xs text-ice/45">{t.vsBot.levelHint}</p>
+            <p className="text-xs text-ice/45">{t.vsBot.questHint}</p>
           </div>
         </section>
 
         {/* 3. Buat Room (manual create) */}
-        <form
-          onSubmit={handleCreateRoom}
-          className="space-y-3 rounded border border-slate-800 bg-slate-900/60 p-4"
-        >
+        <form onSubmit={handleCreateRoom} className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
           <div>
-            <h2 className="font-semibold text-white">{t.createRoom.title}</h2>
-            <p className="text-xs text-slate-400">{t.createRoom.desc}</p>
+            <h2 className="font-display text-base font-bold text-frost">{t.createRoom.title}</h2>
+            <p className="text-xs text-ice/55">{t.createRoom.desc}</p>
           </div>
 
           <fieldset className="space-y-1.5">
-            <legend className="text-xs uppercase tracking-wide text-slate-400">
+            <legend className="text-xs uppercase tracking-wide text-ice/45">
               {t.createRoom.targetPlayersLabel}
             </legend>
             <div className="flex flex-wrap gap-2">
@@ -218,10 +241,10 @@ export default function Home() {
                   type="button"
                   aria-pressed={createSize === size}
                   onClick={() => setCreateSize(size)}
-                  className={`rounded border px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  className={`size-9 rounded-full font-display text-sm font-bold transition-colors ${
                     createSize === size
-                      ? "border-emerald-500 bg-emerald-600/20 text-emerald-200"
-                      : "border-slate-700 text-slate-200 hover:bg-slate-800"
+                      ? "bg-frost text-glacier-ink"
+                      : "border border-white/15 text-ice hover:border-white/35 hover:text-frost"
                   }`}
                 >
                   {size}
@@ -231,49 +254,49 @@ export default function Home() {
           </fieldset>
 
           <fieldset className="space-y-1">
-            <legend className="text-xs uppercase tracking-wide text-slate-400">{t.createRoom.modeLabel}</legend>
-            <label className="flex items-center gap-2 text-sm text-slate-200">
+            <legend className="text-xs uppercase tracking-wide text-ice/45">{t.createRoom.modeLabel}</legend>
+            <label className="flex items-center gap-2 text-sm text-frost/80">
               <input
                 type="radio"
                 name="createMode"
                 checked={createMode === "casual"}
                 onChange={() => setCreateMode("casual")}
-                className="accent-emerald-500"
+                className="accent-glacier"
               />
               {t.createRoom.modeCasual}
             </label>
-            <label className="flex items-center gap-2 text-sm text-slate-200">
+            <label className="flex items-center gap-2 text-sm text-frost/80">
               <input
                 type="radio"
                 name="createMode"
                 checked={createMode === "standard"}
                 onChange={() => setCreateMode("standard")}
-                className="accent-emerald-500"
+                className="accent-glacier"
               />
               {t.createRoom.modeStandard}
             </label>
-            {createMode === "standard" && <p className="text-xs text-amber-400">{t.createRoom.modeStandardHint}</p>}
+            {createMode === "standard" && <p className="text-xs text-amber-200">{t.createRoom.modeStandardHint}</p>}
           </fieldset>
 
           <fieldset className="space-y-1">
-            <legend className="text-xs uppercase tracking-wide text-slate-400">{t.createRoom.visibilityLabel}</legend>
-            <label className="flex items-center gap-2 text-sm text-slate-200">
+            <legend className="text-xs uppercase tracking-wide text-ice/45">{t.createRoom.visibilityLabel}</legend>
+            <label className="flex items-center gap-2 text-sm text-frost/80">
               <input
                 type="radio"
                 name="createVisibility"
                 checked={!createPublic}
                 onChange={() => setCreatePublic(false)}
-                className="accent-emerald-500"
+                className="accent-glacier"
               />
               {t.createRoom.visibilityPrivate}
             </label>
-            <label className="flex items-center gap-2 text-sm text-slate-200">
+            <label className="flex items-center gap-2 text-sm text-frost/80">
               <input
                 type="radio"
                 name="createVisibility"
                 checked={createPublic}
                 onChange={() => setCreatePublic(true)}
-                className="accent-emerald-500"
+                className="accent-glacier"
               />
               {t.createRoom.visibilityPublic}
             </label>
@@ -282,33 +305,33 @@ export default function Home() {
           <button
             type="submit"
             disabled={!hasNickname}
-            className="w-full rounded bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-full bg-glacier-deep px-4 py-2 font-display font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
           >
             {t.createRoom.submit}
           </button>
         </form>
 
         {/* 2. Room Terbuka (Room Browser) */}
-        <section className="space-y-3 rounded border border-slate-800 bg-slate-900/60 p-4">
+        <section className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h2 className="font-semibold text-white">{t.roomBrowser.title}</h2>
-              <p className="text-xs text-slate-400">{t.roomBrowser.desc}</p>
+              <h2 className="font-display text-base font-bold text-frost">{t.roomBrowser.title}</h2>
+              <p className="text-xs text-ice/55">{t.roomBrowser.desc}</p>
             </div>
             <button
               type="button"
               onClick={handleRefreshRooms}
               disabled={roomsLoading}
-              className="shrink-0 rounded border border-slate-700 px-2 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-50"
+              className="shrink-0 rounded-full border border-white/15 px-3 py-1 font-display text-xs font-semibold text-ice transition-colors hover:border-white/35 hover:text-frost disabled:opacity-40"
             >
               {t.roomBrowser.refresh}
             </button>
           </div>
 
-          {roomsError && <p className="text-xs text-red-400">{t.roomBrowser.error}</p>}
-          {!roomsError && rooms === null && <p className="text-xs text-slate-400">{t.roomBrowser.loading}</p>}
+          {roomsError && <p className="text-xs text-red-300">{t.roomBrowser.error}</p>}
+          {!roomsError && rooms === null && <p className="text-xs text-ice/45">{t.roomBrowser.loading}</p>}
           {!roomsError && rooms !== null && rooms.length === 0 && (
-            <p className="text-xs text-slate-400">{t.roomBrowser.empty}</p>
+            <p className="text-xs text-ice/45">{t.roomBrowser.empty}</p>
           )}
 
           {rooms && rooms.length > 0 && (
@@ -316,11 +339,11 @@ export default function Home() {
               {rooms.map((r) => (
                 <li
                   key={r.code}
-                  className="flex items-center justify-between gap-2 rounded border border-slate-800 bg-slate-950/60 px-2.5 py-1.5 text-sm"
+                  className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-night/50 px-3 py-2 text-sm"
                 >
                   <div>
-                    <p className="font-semibold text-slate-100">{r.hostNickname}</p>
-                    <p className="text-xs text-slate-400">
+                    <p className="font-display font-bold text-frost">{r.hostNickname}</p>
+                    <p className="text-xs text-ice/55">
                       {r.playerCount}/{r.maxPlayers} ·{" "}
                       {r.mode === "standard" ? t.roomBrowser.modeStandard : t.roomBrowser.modeCasual}
                     </p>
@@ -329,7 +352,7 @@ export default function Home() {
                     type="button"
                     disabled={!hasNickname}
                     onClick={() => handleJoinRoom(r.code)}
-                    className="shrink-0 rounded bg-indigo-600 px-3 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="shrink-0 rounded-full bg-glacier-deep px-4 py-1.5 font-display text-xs font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
                   >
                     {t.roomBrowser.join}
                   </button>
@@ -340,46 +363,38 @@ export default function Home() {
         </section>
       </div>
 
-      <form onSubmit={handleJoinByCode} className="mx-auto flex max-w-sm items-end gap-2">
-        <div className="flex-1 space-y-1">
-          <label htmlFor="joinCode" className="text-sm font-semibold text-slate-300">
-            {t.joinCodeLabel}
-          </label>
-          <input
-            id="joinCode"
-            name="joinCode"
-            value={joinCode}
-            onChange={(event) => setJoinCode(event.target.value)}
-            placeholder="ABC123"
-            className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 uppercase text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          />
-        </div>
+      {/* Gabung via kode: baris tipis, tanpa kartu. */}
+      <form onSubmit={handleJoinByCode} className="mx-auto flex max-w-md items-center gap-2">
+        <label htmlFor="joinCode" className="shrink-0 font-display text-base font-medium text-ice/60">
+          {t.joinPrompt}
+        </label>
+        <input
+          id="joinCode"
+          name="joinCode"
+          value={joinCode}
+          onChange={(event) => setJoinCode(event.target.value)}
+          placeholder="ABC123"
+          aria-label={t.joinCodeLabel}
+          className="min-w-0 flex-1 rounded-full border border-white/10 bg-white/5 px-4 py-2 font-mono text-sm uppercase tracking-widest text-frost placeholder:tracking-normal placeholder:text-ice/30 focus:border-white/30 focus:outline-none"
+        />
         <button
           type="submit"
           disabled={!hasNickname || !joinCode.trim()}
-          className="rounded bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded-full px-4 py-2 font-display text-base font-semibold text-ice transition-colors hover:text-frost disabled:cursor-not-allowed disabled:opacity-30"
         >
           {t.joinRoom}
         </button>
       </form>
 
       <nav aria-label={t.title}>
-        <ul className="flex flex-wrap justify-center gap-3 text-sm">
-          <li>
-            <Link href="/daily" className="text-indigo-400 hover:underline">
-              {t.dailyLink}
-            </Link>
-          </li>
-          <li>
-            <Link href="/quests" className="text-indigo-400 hover:underline">
-              {t.questsLink}
-            </Link>
-          </li>
-          <li>
-            <Link href="/market" className="text-indigo-400 hover:underline">
-              {t.marketLink}
-            </Link>
-          </li>
+        <ul className="flex items-center justify-center gap-6 font-display text-base font-medium text-ice/50">
+          {FOOTER_LINKS.map((entry) => (
+            <li key={entry.href}>
+              <Link href={entry.href} className="transition-colors hover:text-frost">
+                {t[entry.key]}
+              </Link>
+            </li>
+          ))}
         </ul>
       </nav>
     </main>

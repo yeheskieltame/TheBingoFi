@@ -1,21 +1,37 @@
 @import "tailwindcss";
 
 /*
- * Simple dark theme (CLAUDE.md/task brief: "tema gelap sederhana yang sudah
- * ada", no design system beyond this - the UI team re-skins later). Body
- * background/text/font are set directly with Tailwind utility classes on
- * <body> in app/layout.tsx; these tokens exist for anything that wants to
- * reference them via the @theme inline mapping below (e.g. a future
- * `bg-background`/`text-foreground` utility).
+ * Snow theme. Frame gelap (menyatu dengan border hitam yang sudah ter-bake di
+ * public/images/background/bg.png) + konten bernuansa salju: frost/snow/ice
+ * untuk permukaan, glacier untuk aksi. Body background/text/font di-set lewat
+ * utility di <body> (app/layout.tsx); token di sini dipakai sebagai utility
+ * Tailwind (bg-frost, text-ice, bg-glacier-deep, font-display, ...).
  */
 :root {
-  --background: #020617;
-  --foreground: #f1f5f9;
+  --background: #070c14;
+  --foreground: #f1f6fb;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+
+  /* Frame malam bersalju - sewarna border art di bg.png. */
+  --color-night: #070c14;
+  --color-night-soft: #0e1520;
+
+  /* Permukaan salju: kartu, panel, input. */
+  --color-frost: #f8fbff;
+  --color-snow: #e8f1fb;
+  --color-ice: #cbdff2;
+  --color-ice-line: #b3cfe8;
+
+  /* Aksi & aksen (biru gletser). */
+  --color-glacier: #3a7cb8;
+  --color-glacier-deep: #1d4d7d;
+  --color-glacier-ink: #0d2942;
+
+  --font-sans: var(--font-nunito);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-baloo);
 }

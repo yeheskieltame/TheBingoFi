@@ -14,9 +14,15 @@ export interface LocaleStrings {
   landing: {
     title: string;
     tagline: string;
+    /** Hero kartu art di atas halaman (judul besar + satu kalimat pitch). */
+    heroTitle: string;
+    heroSubtitle: string;
     nicknameLabel: string;
+    nicknamePlaceholder: string;
     nicknameRequiredHint: string;
     joinCodeLabel: string;
+    /** Label baris "gabung via kode" di bawah kartu-kartu mode main. */
+    joinPrompt: string;
     joinRoom: string;
     dailyLink: string;
     questsLink: string;
@@ -61,6 +67,7 @@ export interface LocaleStrings {
   };
   daily: {
     title: string;
+    subtitle: string;
     challengeNumber: string;
     nicknameLabel: string;
     play: string;
@@ -98,7 +105,10 @@ export const strings = {
       plaza: "Plaza",
       profile: "Profilku",
       profileConnectHint: "Connect wallet dulu untuk lihat profilmu",
+      // langToggle/langFlag menunjuk bahasa TUJUAN (yang aktif kalau tombol diklik).
       langToggle: "EN",
+      langFlag: "🇬🇧",
+      langSwitch: "Ganti bahasa ke English",
     },
     wallet: {
       connect: "Connect Wallet",
@@ -111,11 +121,15 @@ export const strings = {
     },
     landing: {
       title: "TheBingoFi",
-      tagline: "Bingo strategis — web2 gameplay, web3 ownership",
+      tagline: "Bingo strategis. Web2 gameplay, web3 ownership",
+      heroTitle: "Susun Papanmu, Rebut BINGO",
+      heroSubtitle: "Bingo turn-based. Strategi, bukan keberuntungan.",
       nicknameLabel: "Nickname",
       nicknameRequiredHint: "Isi nickname dulu untuk memilih mode main",
+      nicknamePlaceholder: "Nickname kamu",
       joinCodeLabel: "Kode Room",
-      joinRoom: "Gabung via Kode",
+      joinRoom: "Gabung",
+      joinPrompt: "Punya kode room?",
       dailyLink: "Daily Challenge",
       questsLink: "Quests",
       marketLink: "Marketplace",
@@ -176,7 +190,7 @@ export const strings = {
         walletNotLinked: "Wallet belum di-link",
         loadoutLabel: "Skill id",
         loadoutEmpty: "belum diset",
-        loadoutNote: "Pemain tanpa loadout tetap bisa main — main polos tanpa skill.",
+        loadoutNote: "Pemain tanpa loadout tetap bisa main, polos tanpa skill.",
         linkWallet: "Link Wallet ke Room",
         linkWalletPending: "Menghubungkan wallet...",
         walletLinked: "Wallet ter-link",
@@ -185,7 +199,7 @@ export const strings = {
         loadoutSave: "Simpan Loadout",
         loadoutSaving: "Menyimpan...",
         loadoutSaved: "Loadout tersimpan",
-        loadoutNoneOwned: "Kamu belum punya skill NFT — beli di Marketplace, atau main tanpa skill.",
+        loadoutNoneOwned: "Kamu belum punya skill NFT. Beli di Marketplace, atau main tanpa skill.",
         loadoutCatalogLoading: "Memuat katalog skill...",
         loadoutCatalogError: "Gagal memuat katalog skill",
         loadoutOwnedLabel: "dimiliki",
@@ -214,7 +228,7 @@ export const strings = {
         calledNumbers: "Angka Terpanggil",
         noCallsYet: "Belum ada angka dipanggil",
         currentTurn: "Giliran",
-        yourTurn: "Giliran kamu — pilih angka",
+        yourTurn: "Giliran kamu, pilih angka",
         waitingTurn: "Menunggu giliran pemain lain",
         callNumber: "Panggil Angka",
         callHint: "Giliranmu — klik angka yang belum ter-mark di board-mu untuk memanggilnya.",
@@ -244,9 +258,9 @@ export const strings = {
           CELL_SWAP: "Pilih 2 sel di board kamu untuk ditukar",
         },
         cancelSelection: "Batal",
-        armedDoublePrefix: "Double Call aktif — panggil ",
+        armedDoublePrefix: "Double Call aktif, panggil ",
         armedDoubleSuffix: " angka giliran ini",
-        armedGhost: "Ghost Call aktif — panggilan berikutnya hanya tertandai di board kamu",
+        armedGhost: "Ghost Call aktif, panggilan berikutnya hanya tertandai di board kamu",
         pendingLabel: "Menunggu keputusan Nullify",
         nullify: "Nullify",
         pass: "Biarkan",
@@ -264,6 +278,7 @@ export const strings = {
     },
     daily: {
       title: "Daily Challenge",
+      subtitle: "Satu puzzle per hari, sama untuk semua pemain. Makin sedikit call sampai 5 garis, makin tinggi skor.",
       challengeNumber: "Tantangan",
       nicknameLabel: "Nickname",
       play: "Mainkan",
@@ -287,16 +302,13 @@ export const strings = {
       loading: "Memuat quest...",
       noPlayerYet: "Main room dulu untuk melihat progress quest kamu.",
       table: {
-        title: "Judul",
-        target: "Target",
-        window: "Periode",
-        reward: "Reward XP",
+        reward: "XP",
         progress: "Progress",
       },
     },
     market: {
       title: "Marketplace",
-      subtitle: "Beli Skill & Skin NFT — kosmetik & aksi in-match, bukan pay-to-win.",
+      subtitle: "Beli Skill & Skin NFT. Kosmetik & aksi in-match, bukan pay-to-win.",
       connectPrompt: "Connect wallet untuk membeli. Katalog tetap bisa dilihat tanpa wallet.",
       loading: "Memuat katalog...",
       error: "Gagal memuat data marketplace",
@@ -376,7 +388,10 @@ export const strings = {
       plaza: "Plaza",
       profile: "My Profile",
       profileConnectHint: "Connect a wallet first to see your profile",
+      // langToggle/langFlag point at the TARGET language (what clicking switches to).
       langToggle: "ID",
+      langFlag: "🇮🇩",
+      langSwitch: "Switch language to Indonesian",
     },
     wallet: {
       connect: "Connect Wallet",
@@ -389,11 +404,15 @@ export const strings = {
     },
     landing: {
       title: "TheBingoFi",
-      tagline: "Strategic bingo — web2 gameplay, web3 ownership",
+      tagline: "Strategic bingo. Web2 gameplay, web3 ownership",
+      heroTitle: "Draft Your Board, Claim the BINGO",
+      heroSubtitle: "Turn-based bingo. Strategy, not luck.",
       nicknameLabel: "Nickname",
       nicknameRequiredHint: "Enter a nickname first to pick a game mode",
+      nicknamePlaceholder: "Your nickname",
       joinCodeLabel: "Room Code",
-      joinRoom: "Join via Code",
+      joinRoom: "Join",
+      joinPrompt: "Got a room code?",
       dailyLink: "Daily Challenge",
       questsLink: "Quests",
       marketLink: "Marketplace",
@@ -454,7 +473,7 @@ export const strings = {
         walletNotLinked: "Wallet not linked",
         loadoutLabel: "Skill ids",
         loadoutEmpty: "not set",
-        loadoutNote: "Players without a loadout can still play — no skills, no disadvantage.",
+        loadoutNote: "Players without a loadout can still play, no skills, no disadvantage.",
         linkWallet: "Link Wallet to Room",
         linkWalletPending: "Linking wallet...",
         walletLinked: "Wallet linked",
@@ -463,7 +482,7 @@ export const strings = {
         loadoutSave: "Save Loadout",
         loadoutSaving: "Saving...",
         loadoutSaved: "Loadout saved",
-        loadoutNoneOwned: "You don't own any skill NFTs yet — buy some on the Marketplace, or play without skills.",
+        loadoutNoneOwned: "You don't own any skill NFTs yet. Buy some on the Marketplace, or play without skills.",
         loadoutCatalogLoading: "Loading skill catalog...",
         loadoutCatalogError: "Failed to load skill catalog",
         loadoutOwnedLabel: "owned",
@@ -492,7 +511,7 @@ export const strings = {
         calledNumbers: "Called Numbers",
         noCallsYet: "No numbers called yet",
         currentTurn: "Turn",
-        yourTurn: "Your turn — pick a number",
+        yourTurn: "Your turn, pick a number",
         waitingTurn: "Waiting for other players",
         callNumber: "Call Number",
         callHint: "Your turn — click an unmarked number on your board to call it.",
@@ -522,9 +541,9 @@ export const strings = {
           CELL_SWAP: "Pick 2 cells on your board to swap",
         },
         cancelSelection: "Cancel",
-        armedDoublePrefix: "Double Call armed — call ",
+        armedDoublePrefix: "Double Call armed, call ",
         armedDoubleSuffix: " numbers this turn",
-        armedGhost: "Ghost Call armed — your next call only marks your own board",
+        armedGhost: "Ghost Call armed, your next call only marks your own board",
         pendingLabel: "Awaiting a Nullify decision",
         nullify: "Nullify",
         pass: "Pass",
@@ -542,6 +561,7 @@ export const strings = {
     },
     daily: {
       title: "Daily Challenge",
+      subtitle: "One puzzle a day, same for every player. Fewer calls to 5 lines means a higher score.",
       challengeNumber: "Challenge",
       nicknameLabel: "Nickname",
       play: "Play",
@@ -565,16 +585,13 @@ export const strings = {
       loading: "Loading quests...",
       noPlayerYet: "Play a room first to see your quest progress.",
       table: {
-        title: "Title",
-        target: "Target",
-        window: "Window",
-        reward: "Reward XP",
+        reward: "XP",
         progress: "Progress",
       },
     },
     market: {
       title: "Marketplace",
-      subtitle: "Buy Skill & Skin NFTs — cosmetics & in-match actions, not pay-to-win.",
+      subtitle: "Buy Skill & Skin NFTs. Cosmetics & in-match actions, not pay-to-win.",
       connectPrompt: "Connect a wallet to buy. The catalog is viewable without one.",
       loading: "Loading catalog...",
       error: "Failed to load marketplace data",

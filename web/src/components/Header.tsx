@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 import { useLocale } from "@/hooks/useLocale";
 import { useWallet } from "@/hooks/useWallet";
@@ -16,57 +17,75 @@ import { truncateAddress } from "@/lib/chain";
  * wagmi/useLocale directly rather than needing props threaded from a
  * layout-level fetch.
  */
+/**
+ * Nav links, in display order - satu sumber supaya markup-nya tidak diulang 4x.
+ * "Play" menunjuk ke landing (form nickname + mode ada di sana, /play sendiri
+ * langsung bikin/masuk room), tapi `also` membuatnya tetap menyala saat pemain
+ * sudah berada di dalam room.
+ */
+const NAV_ITEMS = [
+  { href: "/", key: "play", also: "/play" },
+  { href: "/daily", key: "daily" },
+  { href: "/quests", key: "quests" },
+  { href: "/market", key: "market" },
+  { href: "/plaza", key: "plaza" },
+] as const;
+
 export default function Header() {
   const locale = useLocale();
   const t = strings[locale];
   const wallet = useWallet();
+  const pathname = usePathname();
 
   function toggleLocale() {
     setLocale(locale === "id" ? "en" : "id");
   }
 
   return (
-    <header className="border-b border-slate-800 bg-slate-950/95 text-slate-100">
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-        <Link href="/" className="text-lg font-bold tracking-tight text-white">
+    <header className="sticky top-0 z-50 border-b border-white/5 bg-night/85 text-frost backdrop-blur-md">
+      {/* 3 kolom (logo | nav tengah | aksi) mengikuti pola nav referensi - di mobile jatuh ke stack tengah. */}
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-3 px-4 py-3 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr] md:gap-4">
+        {/* Logo tetap link Home, tanpa indikator aktif - entri nav "Play" yang
+            menandai "/" supaya tidak ada dua penanda menyala bersamaan. */}
+        <Link
+          href="/"
+          title={t.nav.home}
+          className="font-display text-2xl font-bold tracking-tight text-frost transition-opacity hover:opacity-80 md:justify-self-start"
+        >
           {t.landing.title}
         </Link>
 
-        <nav aria-label={t.nav.home}>
-          <ul className="flex flex-wrap items-center gap-1 text-sm">
-            <li>
-              <Link href="/play" className="rounded px-2 py-1 hover:bg-slate-800">
-                {t.nav.play}
-              </Link>
-            </li>
-            <li>
-              <Link href="/daily" className="rounded px-2 py-1 hover:bg-slate-800">
-                {t.nav.daily}
-              </Link>
-            </li>
-            <li>
-              <Link href="/quests" className="rounded px-2 py-1 hover:bg-slate-800">
-                {t.nav.quests}
-              </Link>
-            </li>
-            <li>
-              <Link href="/market" className="rounded px-2 py-1 hover:bg-slate-800">
-                {t.nav.market}
-              </Link>
-            </li>
-            <li>
-              <Link href="/plaza" className="rounded px-2 py-1 hover:bg-slate-800">
-                {t.nav.plaza}
-              </Link>
-            </li>
+        <nav aria-label={t.nav.home} className="md:justify-self-center">
+          <ul className="flex flex-wrap items-center justify-center gap-1">
+            {NAV_ITEMS.map((item) => {
+              // startsWith menangkap sub-route (mis. /market/xyz nanti ikut menyala);
+              // `also` menangkap halaman lain yang masih "milik" entri ini (/play).
+              const matches = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+              const active = matches(item.href) || ("also" in item && matches(item.also));
+              return (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    aria-current={active ? "page" : undefined}
+                    className={`relative block rounded-full px-3 py-1.5 font-display text-base transition-colors after:absolute after:inset-x-3 after:-bottom-0.5 after:h-0.5 after:rounded-full after:transition-colors after:content-[''] ${
+                      active
+                        ? "font-bold text-frost after:bg-frost"
+                        : "font-semibold text-ice/60 after:bg-transparent hover:text-frost"
+                    }`}
+                  >
+                    {t.nav[item.key]}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </nav>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 md:justify-self-end">
           {wallet.isConnected && wallet.address ? (
             <Link
               href={`/profile/${wallet.address}`}
-              className="rounded border border-slate-700 px-2 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-800"
+              className="hidden h-9 items-center rounded-full border border-white/15 px-4 font-display text-sm font-semibold text-ice transition-colors hover:border-white/30 hover:text-frost sm:flex"
             >
               {t.nav.profile}
             </Link>
@@ -74,7 +93,7 @@ export default function Header() {
             <span
               aria-disabled="true"
               title={t.nav.profileConnectHint}
-              className="cursor-not-allowed rounded border border-slate-800 px-2 py-1 text-xs font-semibold text-slate-600"
+              className="hidden h-9 cursor-not-allowed items-center rounded-full border border-white/8 px-4 font-display text-sm font-semibold text-ice/30 sm:flex"
             >
               {t.nav.profile}
             </span>
@@ -83,26 +102,32 @@ export default function Header() {
           <button
             type="button"
             onClick={toggleLocale}
-            className="rounded border border-slate-700 px-2 py-1 text-xs font-semibold text-slate-300 hover:bg-slate-800"
-            aria-label="Switch language"
+            className="flex h-9 items-center gap-1.5 rounded-full border border-white/15 pl-2.5 pr-3 text-ice transition-colors hover:border-white/30 hover:text-frost"
+            aria-label={t.nav.langSwitch}
+            title={t.nav.langSwitch}
           >
-            {t.nav.langToggle}
+            {/* Flag emoji: di Windows Chrome bendera tidak dirender (jadi huruf "GB"/"ID"),
+                makanya kode bahasa tetap ditampilkan di sebelahnya, bukan hanya bendera. */}
+            <span aria-hidden className="text-base leading-none">
+              {t.nav.langFlag}
+            </span>
+            <span className="font-display text-sm font-bold leading-none">{t.nav.langToggle}</span>
           </button>
 
           {wallet.isConnected ? (
-            <div className="flex items-center gap-2">
+            <>
               {wallet.wrongNetwork && (
                 <button
                   type="button"
                   onClick={wallet.switchToGiwaSepolia}
                   disabled={wallet.isSwitchingNetwork}
-                  className="rounded bg-amber-600 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-500 disabled:opacity-60"
+                  className="flex h-9 items-center rounded-full bg-amber-500 px-4 font-display text-sm font-bold text-night transition-colors hover:bg-amber-400 disabled:opacity-60"
                 >
                   {wallet.isSwitchingNetwork ? t.wallet.switching : t.wallet.switchNetwork}
                 </button>
               )}
               <span
-                className="rounded border border-slate-700 px-2 py-1 font-mono text-xs text-slate-200"
+                className="hidden h-9 items-center rounded-full border border-white/15 px-3 font-mono text-xs text-ice sm:flex"
                 title={wallet.address}
               >
                 {truncateAddress(wallet.address ?? "")}
@@ -110,18 +135,18 @@ export default function Header() {
               <button
                 type="button"
                 onClick={wallet.disconnect}
-                className="rounded border border-slate-700 px-2 py-1 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+                className="flex h-9 items-center rounded-full border border-white/15 px-4 font-display text-sm font-semibold text-ice transition-colors hover:border-white/30 hover:text-frost"
               >
                 {t.wallet.disconnect}
               </button>
-            </div>
+            </>
           ) : (
             <button
               type="button"
               onClick={wallet.connect}
               disabled={wallet.isConnecting || !wallet.hasConnector}
               title={wallet.hasConnector ? undefined : t.wallet.notInstalled}
-              className="rounded bg-emerald-600 px-3 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-9 items-center rounded-full bg-frost px-5 font-display text-sm font-bold text-glacier-ink transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {wallet.isConnecting ? t.wallet.connecting : t.wallet.connect}
             </button>
@@ -129,7 +154,7 @@ export default function Header() {
         </div>
       </div>
       {!wallet.hasConnector && (
-        <p className="mx-auto max-w-5xl px-4 pb-2 text-xs text-amber-400">{t.wallet.notInstalled}</p>
+        <p className="mx-auto max-w-6xl px-4 pb-2 text-center text-xs text-amber-300 sm:px-6">{t.wallet.notInstalled}</p>
       )}
     </header>
   );

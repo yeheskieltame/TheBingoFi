@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 
 import DailyLeaderboard from "@/components/DailyLeaderboard";
@@ -35,74 +36,98 @@ export default function DailyPage() {
   }
 
   return (
-    <main className="mx-auto max-w-md space-y-6">
-      <h1 className="text-2xl font-bold">{t.title}</h1>
-
-      {daily.today ? (
-        <p className="text-sm text-slate-400">
-          {t.challengeNumber} #{daily.today.number} — {daily.today.date}
-        </p>
-      ) : !daily.error ? (
-        <p className="text-sm text-slate-500">{strings[locale].common.loading}</p>
-      ) : null}
-
-      {daily.error && (
-        <p role="alert" className="rounded border border-red-600 bg-red-950/60 px-3 py-2 text-sm text-red-300">
-          {daily.error}
-        </p>
-      )}
-
-      {!daily.result && (
-        <form onSubmit={handlePlay} className="space-y-4">
-          <fieldset className="space-y-1">
-            <legend className="text-sm font-semibold text-slate-300">{t.nicknameLabel}</legend>
-            <label htmlFor="daily-nickname" className="sr-only">
-              {t.nicknameLabel}
-            </label>
-            <input
-              id="daily-nickname"
-              value={nickname}
-              onChange={(event) => setNickname(event.target.value)}
-              placeholder={t.nicknameLabel}
-              className="w-full rounded border border-slate-700 bg-slate-900 px-3 py-2 text-white placeholder:text-slate-500 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-          </fieldset>
-
-          <DraftBoard
-            numbers={draft.numbers}
-            selectedIndex={draft.selectedIndex}
-            onSelectCell={draft.selectCell}
-            onSwapCells={draft.swapCells}
-            onShuffle={draft.shuffle}
-            valid={draft.validation.valid}
-            validationError={draft.validation.error}
-          />
-
-          <button
-            type="submit"
-            disabled={daily.pending || !draft.validation.valid || !nickname.trim()}
-            className="w-full rounded bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {daily.pending ? strings[locale].common.loading : t.play}
-          </button>
-        </form>
-      )}
-
-      {daily.result && (
-        <DailyResult
-          number={daily.result.number}
-          score={daily.result.score}
-          callsToBingo={daily.result.callsToBingo}
-          shareCard={daily.result.shareCard}
-          copied={copied}
-          onCopy={handleCopy}
+    <main className="mx-auto max-w-md space-y-6 py-4 text-center">
+      {/* Kartu utama: art potret jadi latar KARTU (bukan latar halaman).
+          Overlay gelap bergradasi wajib - separuh bawah art itu salju terang,
+          teks frost tidak akan terbaca tanpa itu. */}
+      <section className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
+        <Image
+          src="/images/background/potrait-bg.png"
+          alt=""
+          fill
+          priority
+          sizes="(max-width: 640px) 100vw, 448px"
+          className="object-cover object-center"
         />
-      )}
+        <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-night/55 via-night/70 to-night/90" />
+
+        <div className="relative space-y-5 px-4 py-7 sm:px-6">
+          <header className="space-y-2.5">
+            {daily.today ? (
+              <p className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-night/40 px-3 py-1 font-display text-xs font-semibold text-ice backdrop-blur-md">
+                {t.challengeNumber} #{daily.today.number}
+                <span className="text-ice/50">{daily.today.date}</span>
+              </p>
+            ) : !daily.error ? (
+              <p className="text-xs text-ice/50">{strings[locale].common.loading}</p>
+            ) : null}
+
+            <h1 className="font-display text-2xl font-bold tracking-tight text-frost sm:text-3xl">
+              {t.title} <span aria-hidden>❄️</span>
+            </h1>
+            <p className="mx-auto max-w-xs text-sm leading-relaxed text-frost/65">{t.subtitle}</p>
+          </header>
+
+          {daily.error && (
+            <p
+              role="alert"
+              className="mx-auto max-w-md rounded-2xl border border-red-500/40 bg-red-950/60 px-4 py-2.5 text-sm text-red-200 backdrop-blur-md"
+            >
+              {daily.error}
+            </p>
+          )}
+
+          {!daily.result && (
+            <form onSubmit={handlePlay} className="flex flex-col items-center gap-5">
+              <DraftBoard
+                numbers={draft.numbers}
+                selectedIndex={draft.selectedIndex}
+                onSelectCell={draft.selectCell}
+                onSwapCells={draft.swapCells}
+                onShuffle={draft.shuffle}
+                valid={draft.validation.valid}
+                validationError={draft.validation.error}
+              />
+
+              <div className="flex w-full max-w-xs flex-col items-center gap-2.5">
+                <label htmlFor="daily-nickname" className="sr-only">
+                  {t.nicknameLabel}
+                </label>
+                <input
+                  id="daily-nickname"
+                  value={nickname}
+                  onChange={(event) => setNickname(event.target.value)}
+                  placeholder={t.nicknameLabel}
+                  className="w-full rounded-full border border-white/15 bg-night/40 px-4 py-2 text-center font-display text-sm font-medium text-frost backdrop-blur-md placeholder:text-ice/40 focus:border-white/35 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={daily.pending || !draft.validation.valid || !nickname.trim()}
+                  className="rounded-full bg-glacier-deep px-8 py-2 font-display text-base font-bold text-frost shadow-lg shadow-night/40 transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {daily.pending ? strings[locale].common.loading : t.play}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {daily.result && (
+            <DailyResult
+              number={daily.result.number}
+              score={daily.result.score}
+              callsToBingo={daily.result.callsToBingo}
+              shareCard={daily.result.shareCard}
+              copied={copied}
+              onCopy={handleCopy}
+            />
+          )}
+        </div>
+      </section>
 
       {daily.leaderboard ? (
         <DailyLeaderboard entries={daily.leaderboard} />
       ) : (
-        !daily.error && <p className="text-sm text-slate-500">{strings[locale].common.loading}</p>
+        !daily.error && <p className="text-sm text-ice/40">{strings[locale].common.loading}</p>
       )}
     </main>
   );
