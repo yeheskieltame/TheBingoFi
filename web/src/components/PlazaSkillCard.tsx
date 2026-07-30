@@ -12,11 +12,13 @@ export interface PlazaSkillCardProps {
 }
 
 /**
- * Small clickable card attached to a Plaza chat message that carries a
- * `skillId` (CONCEPT.md §7.4b: "pesan chat bisa melampirkan kartu skill
- * yang dimiliki (render sebagai kartu, bukan teks)") - name + tier, click
- * takes you to /market. Rendered alongside the message's free-text `text`,
- * not instead of it.
+ * Kartu skill yang menempel pada pesan Plaza ber-`skillId` (CONCEPT.md §7.4b:
+ * "pesan chat bisa melampirkan kartu skill yang dimiliki (render sebagai
+ * kartu, bukan teks)") - klik menuju /market.
+ *
+ * Sengaja dibuat kontras dengan teks pesan di sekitarnya (blok kaca + aksen
+ * gletser + nama pakai display font): ini fitur pamer, jadi kalau tampilannya
+ * setipis teks biasa, fungsinya hilang.
  */
 export default function PlazaSkillCard({ skillId, name, tier }: PlazaSkillCardProps) {
   const locale = useLocale();
@@ -25,12 +27,25 @@ export default function PlazaSkillCard({ skillId, name, tier }: PlazaSkillCardPr
   return (
     <Link
       href="/market"
-      className="mt-1 flex w-fit items-center gap-2 rounded border border-slate-700 bg-slate-800/60 px-2 py-1.5 text-xs hover:border-indigo-500 hover:bg-slate-800"
+      className="group mt-2 flex w-fit max-w-full items-center gap-3 rounded-2xl border border-glacier/40 bg-glacier/12 p-2 pr-3 transition-all hover:-translate-y-0.5 hover:border-frost/50 hover:bg-glacier/20"
     >
-      <span className="font-semibold text-slate-100">{name}</span>
-      {tier && <SkillTierBadge tier={tier} />}
-      <span className="text-slate-500">
-        #{skillId} · {t.viewInMarket}
+      {/* Petak inisial sebagai stand-in art skill - slot ilustrasi asli ada di
+          metadata (lihat /market SkillMedia), belum dipakai di chat. */}
+      <span
+        aria-hidden
+        className="grid size-10 shrink-0 place-items-center rounded-xl bg-night/60 font-display text-sm font-bold text-frost ring-1 ring-white/15"
+      >
+        {name.slice(0, 2).toUpperCase()}
+      </span>
+
+      <span className="min-w-0">
+        <span className="flex flex-wrap items-center gap-1.5">
+          <span className="truncate font-display text-sm font-bold text-frost">{name}</span>
+          {tier && <SkillTierBadge tier={tier} />}
+        </span>
+        <span className="block text-[0.7rem] text-ice/55">
+          #{skillId} · <span className="text-frost/70 group-hover:text-frost">{t.viewInMarket} →</span>
+        </span>
       </span>
     </Link>
   );
