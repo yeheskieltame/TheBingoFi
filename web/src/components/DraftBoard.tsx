@@ -45,7 +45,7 @@ export default function DraftBoard({
     <div className="flex flex-col items-center gap-3.5">
       {/* Panel kaca gelap: bikin papan menonjol dan tetap terbaca di atas
           background art (/daily), tanpa mengganggu latar polos (/play). */}
-      <div className="rounded-3xl bg-night/40 p-2.5 ring-1 ring-white/10 backdrop-blur-md">
+      <div className="rounded-3xl bg-night/40 p-2.5 backdrop-blur-md">
         <div className="grid grid-cols-5 gap-1.5">
           {numbers.map((number, index) => (
             <button

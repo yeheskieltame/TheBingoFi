@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { LuTrophy } from "react-icons/lu";
 
 import DailyLeaderboard from "@/components/DailyLeaderboard";
 import DailyResult from "@/components/DailyResult";
@@ -40,27 +41,14 @@ export default function DailyPage() {
 
   return (
     <main className="mx-auto max-w-5xl py-6">
-      {/* Latar art satu halaman, sama dengan / dan /play - sebelumnya sisi kiri
-          kanan halaman ini hitam kosong sementara kartunya sendiri ber-art. */}
-      <div aria-hidden className="fixed inset-0 -z-10">
-        <Image
-          src="/images/background/bg.png"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-top"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-night/50 via-night/80 to-night" />
-      </div>
 
       <div className="mx-auto w-full max-w-md space-y-5 text-center">
       {/* Kartu utama: art potret jadi latar KARTU (bukan latar halaman).
           Overlay gelap bergradasi wajib - separuh bawah art itu salju terang,
           teks frost tidak akan terbaca tanpa itu. */}
-      <section className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
+      <section className="relative overflow-hidden rounded-3xl">
         <Image
-          src="/images/background/potrait-bg.png"
+          src="/images/background/potrait-bg.webp"
           alt=""
           fill
           priority
@@ -145,13 +133,19 @@ export default function DailyPage() {
         <button
           type="button"
           onClick={() => setLeaderboardOpen(true)}
-          className="rounded-full border border-white/15 bg-night/50 px-5 py-2 font-display text-sm font-semibold text-ice backdrop-blur-md transition-colors hover:border-white/35 hover:text-frost"
+          className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-night/50 px-5 py-2 font-display text-sm font-semibold text-ice backdrop-blur-md transition-colors hover:border-white/35 hover:text-frost"
         >
-          🏆 {t.leaderboard.title}
+          <LuTrophy aria-hidden className="size-4" />
+          {t.leaderboard.title}
         </button>
       </div>
 
-      <Dialog open={leaderboardOpen} title={t.leaderboard.title} onClose={() => setLeaderboardOpen(false)}>
+      <Dialog
+        open={leaderboardOpen}
+        title={t.leaderboard.title}
+        artImage="/images/background/potrait-bg.webp"
+        onClose={() => setLeaderboardOpen(false)}
+      >
         {daily.leaderboard ? (
           <DailyLeaderboard entries={daily.leaderboard} />
         ) : (
