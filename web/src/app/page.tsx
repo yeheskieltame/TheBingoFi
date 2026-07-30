@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import Dialog from "@/components/Dialog";
+import NicknameField from "@/components/NicknameField";
 import { useLocale } from "@/hooks/useLocale";
 import { useRoom } from "@/hooks/useRoom";
 import { strings } from "@/i18n/strings";
@@ -26,10 +27,10 @@ const ROOM_LIST_POLL_MS = 10_000;
  * alt/aria dan judul panel opsi di bawahnya - tidak dirender dua kali.
  */
 const MODE_CARDS = [
-  { id: "quick", image: "/images/card/vs-player.png", labelKey: "quickMatch" },
-  { id: "bot", image: "/images/card/vs-bot.png", labelKey: "vsBot" },
-  { id: "create", image: "/images/card/create-room.png", labelKey: "createRoom" },
-  { id: "open", image: "/images/card/open-room.png", labelKey: "roomBrowser" },
+  { id: "quick", image: "/images/card/vs-player.webp", labelKey: "quickMatch" },
+  { id: "bot", image: "/images/card/vs-bot.webp", labelKey: "vsBot" },
+  { id: "create", image: "/images/card/create-room.webp", labelKey: "createRoom" },
+  { id: "open", image: "/images/card/open-room.webp", labelKey: "roomBrowser" },
 ] as const;
 
 type ModeId = (typeof MODE_CARDS)[number]["id"];
@@ -76,6 +77,8 @@ export default function Home() {
   /** Quick Match & VS Bot sekarang dua langkah (pilih dulu, PLAY kemudian) supaya
    *  tombol aksi utamanya tunggal dan besar, bukan 10 tombol yang semuanya "start". */
   const [quickSize, setQuickSize] = useState<number>(MIN_PLAYERS);
+  /** Art kartu mode yang sedang terbuka, dipakai sebagai latar modalnya. */
+  const modeArt = (id: ModeId) => MODE_CARDS.find((card) => card.id === id)!.image;
   const [botLevel, setBotLevel] = useState<number>(3);
 
   const [createSize, setCreateSize] = useState<number>(MAX_PLAYERS);
@@ -158,21 +161,6 @@ export default function Home() {
 
   return (
     <main className="mx-auto flex min-h-[calc(100vh-9rem)] max-w-5xl flex-col justify-center gap-5 py-4">
-      {/* Latar art untuk SELURUH halaman: fixed di belakang konten, di-anchor ke
-          atas supaya langit jadi panggung hero dan lerengnya turun ke area kartu.
-          Gradient menutup dari transparan (atas) ke night pekat (bawah) supaya
-          hero dan kartu-kartu mode terbaca sebagai satu bidang, bukan dua blok. */}
-      <div aria-hidden className="fixed inset-0 -z-10">
-        <Image
-          src="/images/background/bg.png"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-top"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-night/25 via-night/70 to-night" />
-      </div>
 
       <section className="relative">
         <div className="relative flex flex-col items-center gap-2.5 px-5 py-6 text-center">
@@ -181,20 +169,6 @@ export default function Home() {
           </h1>
           <p className="text-xs text-frost/60">{t.heroSubtitle}</p>
 
-          <div className="w-full max-w-[16rem] space-y-1">
-            <label htmlFor="nickname" className="sr-only">
-              {t.nicknameLabel}
-            </label>
-            <input
-              id="nickname"
-              name="nickname"
-              value={nickname}
-              onChange={(event) => handleNicknameChange(event.target.value)}
-              placeholder={t.nicknamePlaceholder}
-              className="w-full rounded-full bg-frost/95 px-4 py-1.5 text-center font-display text-sm font-medium text-glacier-ink placeholder:text-glacier-deep/40 focus:outline-none focus:ring-2 focus:ring-frost"
-            />
-            {!hasNickname && <p className="text-[0.7rem] text-amber-200/90">{t.nicknameRequiredHint}</p>}
-          </div>
         </div>
       </section>
 
@@ -248,11 +222,14 @@ export default function Home() {
       {/* Opsi tiap mode: modal (motion), muncul saat kartunya diklik. */}
       <Dialog
         open={openMode === "quick"}
+        artImage={modeArt("quick")}
         title={t.quickMatch.title}
         description={t.quickMatch.desc}
         onClose={() => setOpenMode(null)}
       >
         <div className="space-y-5">
+          <NicknameField id="nickname-quick" value={nickname} onChange={handleNicknameChange} />
+
           <fieldset>
             <legend className="mb-2 w-full text-center text-xs uppercase tracking-wide text-ice/45">
               {t.quickMatch.sizeLabel}
@@ -289,11 +266,14 @@ export default function Home() {
 
       <Dialog
         open={openMode === "bot"}
+        artImage={modeArt("bot")}
         title={t.vsBot.title}
         description={t.vsBot.desc}
         onClose={() => setOpenMode(null)}
       >
         <div className="space-y-5">
+          <NicknameField id="nickname-bot" value={nickname} onChange={handleNicknameChange} />
+
           <fieldset className="space-y-2">
             <legend className="mb-2 w-full text-center text-xs uppercase tracking-wide text-ice/45">
               {t.vsBot.levelLabel}
@@ -343,11 +323,14 @@ export default function Home() {
 
       <Dialog
         open={openMode === "create"}
+        artImage={modeArt("create")}
         title={t.createRoom.title}
         description={t.createRoom.desc}
         onClose={() => setOpenMode(null)}
       >
         <form onSubmit={handleCreateRoom} className="space-y-5">
+          <NicknameField id="nickname-create" value={nickname} onChange={handleNicknameChange} />
+
           <fieldset>
             <legend className="mb-2 w-full text-center text-xs uppercase tracking-wide text-ice/45">
               {t.createRoom.targetPlayersLabel}
@@ -434,11 +417,14 @@ export default function Home() {
 
       <Dialog
         open={openMode === "open"}
+        artImage={modeArt("open")}
         title={t.roomBrowser.title}
         description={t.roomBrowser.desc}
         onClose={() => setOpenMode(null)}
       >
         <div className="space-y-3">
+          <NicknameField id="nickname-open" value={nickname} onChange={handleNicknameChange} />
+
           <div className="flex justify-center">
             <button
               type="button"
@@ -485,7 +471,8 @@ export default function Home() {
         </div>
       </Dialog>
 
-      {/* Gabung via kode: baris tipis, tanpa kartu. */}
+      {/* Gabung via kode: baris tipis, tanpa kartu. Nickname TIDAK diminta di
+          sini - satu-satunya tempat mengisinya adalah modal mode. */}
       <form onSubmit={handleJoinByCode} className="mx-auto flex max-w-md items-center gap-2">
         <label htmlFor="joinCode" className="shrink-0 font-display text-base font-medium text-ice/60">
           {t.joinPrompt}
