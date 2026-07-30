@@ -1,7 +1,5 @@
 "use client";
 
-import Image from "next/image";
-
 import QuestList from "@/components/QuestList";
 import { useLocale } from "@/hooks/useLocale";
 import { useQuests } from "@/hooks/useQuests";
@@ -13,41 +11,37 @@ export default function QuestsPage() {
   const { quests, progress, playerId, error } = useQuests();
 
   return (
-    <main className="mx-auto max-w-xl py-6">
-      <div aria-hidden className="fixed inset-0 -z-10">
-        <Image
-          src="/images/background/bg.png"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-top"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-night/50 via-night/80 to-night" />
-      </div>
+    <main className="mx-auto max-w-2xl py-8">
+      {/* "System window": bingkai ganda + sudut bracket, bukan kartu biasa -
+          quest log memang lebih enak dibaca sebagai panel HUD daripada daftar
+          kartu, dan ini juga membedakannya dari /market yang art-heavy. */}
+      <section className="relative rounded-lg border border-glacier/50 bg-night/75 p-1.5 shadow-[0_0_45px_-12px_rgba(58,124,184,0.55)] backdrop-blur-md">
+        <div className="relative rounded border border-glacier/25 px-5 py-8 sm:px-10">
+          {/* Sudut bracket */}
+          <span aria-hidden className="pointer-events-none absolute left-1.5 top-1.5 size-4 border-l-2 border-t-2 border-frost/70" />
+          <span aria-hidden className="pointer-events-none absolute right-1.5 top-1.5 size-4 border-r-2 border-t-2 border-frost/70" />
+          <span aria-hidden className="pointer-events-none absolute bottom-1.5 left-1.5 size-4 border-b-2 border-l-2 border-frost/70" />
+          <span aria-hidden className="pointer-events-none absolute bottom-1.5 right-1.5 size-4 border-b-2 border-r-2 border-frost/70" />
 
-      {/* Kartu ber-art potret, pola sama dengan /daily. Overlay gelap wajib:
-          separuh bawah art itu salju terang, teks frost tidak akan terbaca. */}
-      <section className="relative overflow-hidden rounded-3xl ring-1 ring-white/10">
-        <Image
-          src="/images/background/potrait-bg.png"
-          alt=""
-          fill
-          priority
-          sizes="(max-width: 640px) 100vw, 576px"
-          className="object-cover object-center"
-        />
-        <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-night/55 via-night/70 to-night/90" />
-
-        <div className="relative space-y-5 px-4 py-7 sm:px-6">
-          <h1 className="text-center font-display text-2xl font-bold tracking-tight text-frost sm:text-3xl">
-            {t.title}
-          </h1>
+          <header className="mb-5 space-y-3 text-center">
+            <div className="mx-auto flex w-fit items-stretch border border-glacier/50">
+              <span
+                aria-hidden
+                className="grid w-12 place-items-center border-r border-glacier/50 font-display text-xl font-bold text-frost"
+              >
+                !
+              </span>
+              <h1 className="px-6 py-3 font-display text-xl font-bold uppercase tracking-[0.3em] text-frost sm:text-2xl">
+                {t.panelTitle}
+              </h1>
+            </div>
+            <p className="text-sm text-ice/50">{t.intro}</p>
+          </header>
 
           {error && (
             <p
               role="alert"
-              className="rounded-2xl border border-red-500/40 bg-red-950/60 px-4 py-2.5 text-sm text-red-200 backdrop-blur-md"
+              className="mb-4 border border-red-500/40 bg-red-950/50 px-4 py-2.5 text-sm text-red-200"
             >
               {error}
             </p>
@@ -62,7 +56,13 @@ export default function QuestsPage() {
               <QuestList quests={quests} progress={progress} />
             ))}
 
-          {!playerId && <p className="text-center text-xs text-ice/50">{t.noPlayerYet}</p>}
+          <footer className="mt-6 space-y-3 border-t border-white/10 pt-4 text-center">
+            <p className="text-xs leading-relaxed text-ice/45">
+              {t.warning.split(".")[0]}.
+              <span className="text-amber-300"> {t.warning.split(".").slice(1).join(".").trim()}</span>
+            </p>
+            {!playerId && <p className="text-xs text-ice/50">{t.noPlayerYet}</p>}
+          </footer>
         </div>
       </section>
     </main>
