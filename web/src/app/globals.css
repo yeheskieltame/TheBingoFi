@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
+/*
+ * Simple dark theme (CLAUDE.md/task brief: "tema gelap sederhana yang sudah
+ * ada", no design system beyond this - the UI team re-skins later). Body
+ * background/text/font are set directly with Tailwind utility classes on
+ * <body> in app/layout.tsx; these tokens exist for anything that wants to
+ * reference them via the @theme inline mapping below (e.g. a future
+ * `bg-background`/`text-foreground` utility).
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #020617;
+  --foreground: #f1f5f9;
 }
 
 @theme inline {
@@ -10,17 +18,4 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }

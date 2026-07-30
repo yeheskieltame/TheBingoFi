@@ -146,9 +146,9 @@ export function useRoom() {
     };
   }, []);
 
-  const createRoom = useCallback((nickname: string) => {
+  const createRoom = useCallback((nickname: string, mode?: "casual" | "standard") => {
     dispatch({ type: "pending", value: true });
-    socketRef.current.emit("room:create", { nickname }, (res) => {
+    socketRef.current.emit("room:create", { nickname, mode }, (res) => {
       if (!res.ok) {
         dispatch({ type: "error", message: res.error });
         return;
@@ -233,6 +233,51 @@ export function useRoom() {
     });
   }, []);
 
+  /**
+   * Wallet link (server/API.md's "Wallet link"): wallet:nonce -> sign the
+   * returned message -> wallet:link, over the SAME room socket (so a
+   * successful link, if already in a room, triggers the server's
+   * room:state re-broadcast with `players[].wallet` filled in - handled by
+   * the existing "room:state" listener above, no extra action needed here).
+   * `signMessage` is injected (rather than importing wagmi into this hook)
+   * so useRoom stays wallet-library-agnostic - see hooks/useWallet.ts's
+   * `signMessage`, built from wagmi's useSignMessage.
+   */
+  const linkWallet = useCallback((address: string, signMessage: (message: string) => Promise<string>) => {
+    dispatch({ type: "pending", value: true });
+    socketRef.current.emit("wallet:nonce", {}, (nonceRes) => {
+      if (!nonceRes.ok) {
+        dispatch({ type: "error", message: nonceRes.error });
+        return;
+      }
+      signMessage(nonceRes.message)
+        .then((signature) => {
+          socketRef.current.emit("wallet:link", { address, signature }, (linkRes) => {
+            if (!linkRes.ok) {
+              dispatch({ type: "error", message: linkRes.error });
+              return;
+            }
+            dispatch({ type: "pending", value: false });
+          });
+        })
+        .catch((err: unknown) => {
+          dispatch({ type: "error", message: err instanceof Error ? err.message : "Wallet signature failed" });
+        });
+    });
+  }, []);
+
+  /** Sets (or clears) the caller's on-chain-verified loadout - "standard" mode rooms only, see server/API.md's "Mode room & Loadout". */
+  const setLoadout = useCallback((skillIds: readonly number[]) => {
+    dispatch({ type: "pending", value: true });
+    socketRef.current.emit("loadout:set", { skillIds }, (res) => {
+      if (!res.ok) {
+        dispatch({ type: "error", message: res.error });
+        return;
+      }
+      dispatch({ type: "lobby", view: res.view });
+    });
+  }, []);
+
   /** Starts client-side cell-picking for a skill that needs board clicks before it can be cast (WILD_DAUB: 1 cell, CELL_SWAP: 2) - see SkillSelectionState. */
   const armSkillSelection = useCallback((effectType: string, cellsNeeded: number) => {
     dispatch({ type: "armSkillSelection", effectType, cellsNeeded });
@@ -277,6 +322,8 @@ export function useRoom() {
     callNumber,
     castSkill,
     respondSkill,
+    linkWallet,
+    setLoadout,
     armSkillSelection,
     cancelSkillSelection,
     selectSkillCell,

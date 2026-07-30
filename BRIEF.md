@@ -37,20 +37,24 @@ Aturan lengkap + skill system + ekonomi: [CONCEPT.md](CONCEPT.md).
 | Server realtime (Socket.IO: room/kode, draft, match, anti-cheat redaksi board) | ✅ jalan, tested |
 | HTTP API (daily challenge, leaderboard harian, quests) | ✅ jalan + CORS, tested |
 | Smart contract (Registry, Factory, Collection ERC-1155, Marketplace) | ✅ **live & verified di GIWA Sepolia**, katalog 5 skill terisi, coverage 100% |
-| Kerangka FE (semua flow di atas, consume penuh) | ✅ fungsional, **tanpa styling — porsi kalian** |
-| Skill in-match, wallet connect, marketplace UI, friends/club | ⏳ belum — jangan didesain dulu kecuali diminta |
+| Skill in-match (5 skill + Nullify window 15s) | ✅ engine + realtime + UI, tested |
+| Wallet connect (wagmi, injected) + link ke room + loadout NFT | ✅ jalan, verifikasi ownership on-chain |
+| Marketplace `/market` (katalog, harga, beli NFT, balance) | ✅ jalan, on-chain |
+| FE lengkap (semua flow di atas, Tailwind utilitarian) | ✅ **100% fungsional — sisa polish visual = porsi kalian** |
+| Friends/club, event scheduler, persistence (DB) | ⏳ belum — jangan didesain dulu kecuali diminta |
 
 ## 6. Tugas Tim FE/UI — Persisnya
 
-**Yang dikerjakan: poles seluruh tampilan & UX dari kerangka yang sudah fungsional.** Semua logic (socket, state, fetch, validasi) SUDAH jadi dan teruji — kalian tidak perlu paham Socket.IO sama sekali.
+**Yang dikerjakan: percantik visual dari FE yang sudah 100% fungsional.** Semua logic (socket, state, fetch, wallet, validasi) SUDAH jadi dan teruji — kalian tidak perlu paham Socket.IO/wagmi sama sekali. Styling sekarang Tailwind utilitarian sederhana — silakan re-skin total.
 
-Halaman yang menunggu didesain (semua sudah jalan, markup HTML polos):
+Halaman yang menunggu dipercantik (semua sudah jalan penuh):
 
 1. **`/` Landing** — nickname, buat room, gabung via kode, link ke daily & quests.
-2. **`/play`** — 4 fase dalam satu halaman: **Lobby** (daftar pemain, kode room yang enak dibagikan, tombol host), **Draft** (susun board 5×5: acak + tukar sel, validasi realtime), **Match** (board sendiri dengan sel ter-mark, angka terpanggil, indikator giliran — INI layar paling penting, kejelasan "sekarang giliran siapa & angka mana yang menguntungkan" adalah inti game feel), **Result** (pemenang + alasan).
+2. **`/play`** — 4 fase dalam satu halaman: **Lobby** (daftar pemain, kode room copyable, tombol host; room standard: link wallet + loadout picker dari NFT yang dimiliki), **Draft** (susun board 5×5: acak + tukar sel, validasi realtime), **Match** (board dengan sel ter-mark, angka terpanggil, indikator giliran, **panel skill** + banner Nullify dengan countdown 15 detik — INI layar paling penting, kejelasan "giliran siapa & skill apa yang pending" adalah inti game feel), **Result** (pemenang + main lagi).
 3. **`/daily`** — susun board, hasil skor, **share card** (aset viral utama — bikin semenarik mungkin buat di-screenshot/dibagikan), leaderboard harian.
-4. **`/quests`** — daftar quest + progress.
-5. Notifikasi **quest completed** yang muncul saat main.
+4. **`/quests`** — daftar quest + progress bar.
+5. **`/market`** — katalog skill on-chain, harga/stok, beli NFT (wagmi), balance, link tx explorer.
+6. Notifikasi **quest completed** + riwayat **skill resolved** yang muncul saat main.
 
 **Aturan repo (penting, dijaga biar tidak bentrok):**
 
@@ -59,7 +63,7 @@ Halaman yang menunggu didesain (semua sudah jalan, markup HTML polos):
 - Semua teks lewat `web/src/i18n/strings.ts` (id/en) — jangan hardcode string di komponen.
 - Komponen sudah dipecah per fungsi dan terima props — daftar lengkap + props + cara jalanin lokal: [web/README.md](web/README.md).
 
-**Di luar scope sekarang** (tombolnya ada tapi disabled, biarkan): wallet connect, beli NFT/marketplace, halaman koleksi. Menyusul setelah UI inti rapi.
+**Di luar scope sekarang**: friends/referral, club, spectator, event — fiturnya memang belum ada di server. Jangan buat UI-nya dulu.
 
 ## 7. Arah Rasa (bukan aturan — kalian yang pegang visual)
 
