@@ -7,17 +7,26 @@ export interface BingoLettersProps {
   readonly compact?: boolean;
 }
 
-/** Dumb: line progress as B-I-N-G-O letters — 1 garis = B, 5 garis = BINGO. */
+/**
+ * Dumb: line progress as B-I-N-G-O letters — 1 garis = B, 5 garis = BINGO.
+ * Huruf yang menyala pakai putih salju + glow, yang belum tetap kaca gelap:
+ * kontrasnya sengaja tajam karena ini indikator "seberapa dekat menang" yang
+ * dibaca sekilas di tengah match.
+ */
 export default function BingoLetters({ count, compact = false }: BingoLettersProps) {
   const lit = Math.min(count, LETTERS.length);
   return (
-    <span className={`inline-flex ${compact ? "gap-0.5" : "gap-1"}`} aria-label={`${lit}/5 BINGO`}>
+    <span className={`inline-flex ${compact ? "gap-0.5" : "gap-1.5"}`} aria-label={`${lit}/5 BINGO`}>
       {LETTERS.map((letter, i) => (
         <span
           key={letter}
-          className={`flex items-center justify-center rounded font-black ${
-            compact ? "h-5 w-5 text-[10px]" : "h-8 w-8 text-base"
-          } ${i < lit ? "bg-amber-400 text-slate-950" : "bg-slate-800 text-slate-600"}`}
+          className={`flex items-center justify-center rounded-lg font-display font-bold transition-all ${
+            compact ? "size-5 text-[10px]" : "size-9 text-lg sm:size-10 sm:text-xl"
+          } ${
+            i < lit
+              ? "bg-frost text-glacier-ink shadow-lg shadow-frost/30 ring-1 ring-frost"
+              : "bg-white/5 text-ice/25 ring-1 ring-white/10"
+          }`}
         >
           {letter}
         </span>

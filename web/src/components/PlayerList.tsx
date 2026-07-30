@@ -25,9 +25,9 @@ export default function PlayerList({ players, hostId, mode }: PlayerListProps) {
 
   return (
     <table className="w-full border-collapse text-left text-sm">
-      <caption className="mb-1 text-left text-xs uppercase text-slate-400">{t.playersTitle}</caption>
+      <caption className="mb-2 text-left text-xs uppercase tracking-wide text-ice/45">{t.playersTitle}</caption>
       <thead>
-        <tr className="border-b border-slate-800 text-xs uppercase text-slate-400">
+        <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-ice/40">
           <th scope="col" className="py-1 pr-2">
             {strings[locale].landing.nicknameLabel}
           </th>
@@ -49,8 +49,8 @@ export default function PlayerList({ players, hostId, mode }: PlayerListProps) {
       </thead>
       <tbody>
         {players.map((player) => (
-          <tr key={player.playerId} className="border-b border-slate-900">
-            <td className="py-1 pr-2 font-medium text-slate-100">
+          <tr key={player.playerId} className="border-b border-white/5">
+            <td className="py-2 pr-2 font-display font-bold text-frost">
               {player.wallet ? (
                 <Link href={`/profile/${player.wallet}`} className="hover:underline">
                   {player.nickname}
@@ -59,20 +59,20 @@ export default function PlayerList({ players, hostId, mode }: PlayerListProps) {
                 player.nickname
               )}
               {player.isBot && (
-                <span className="ml-1.5 rounded-full border border-rose-600 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase text-rose-300">
+                <span className="ml-1.5 rounded-full border border-amber-300/60 px-2 py-0.5 align-middle text-[10px] font-bold uppercase text-amber-200">
                   {t.botBadge}
                 </span>
               )}
             </td>
-            <td className="py-1 pr-2 text-slate-400">{player.playerId === hostId ? t.host : ""}</td>
-            <td className="py-1 pr-2">
-              <span className={player.connected ? "text-emerald-400" : "text-red-400"}>
+            <td className="py-2 pr-2 text-ice/50">{player.playerId === hostId ? t.host : ""}</td>
+            <td className="py-2 pr-2">
+              <span className={player.connected ? "text-frost/75" : "text-red-300"}>
                 {player.connected ? t.connected : t.disconnected}
               </span>
             </td>
-            <td className="py-1 pr-2 text-slate-300">{player.hasSubmittedBoard ? t.submitted : t.waiting}</td>
+            <td className="py-2 pr-2 text-ice/70">{player.hasSubmittedBoard ? t.submitted : t.waiting}</td>
             {showLoadout && (
-              <td className="py-1 pr-2 text-slate-300">
+              <td className="py-2 pr-2 text-ice/70">
                 {player.loadout && player.loadout.length > 0 ? player.loadout.join(", ") : t.loadoutNone}
               </td>
             )}

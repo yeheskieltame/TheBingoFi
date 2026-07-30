@@ -42,25 +42,25 @@ export default function LoadoutPicker({
   // effectType string below.
   const effectNames: Record<string, string> = strings[locale].play.skills.effectNames;
 
-  if (catalogLoading) return <p className="text-sm text-slate-400">{t.loadoutCatalogLoading}</p>;
-  if (catalogError) return <p className="text-sm text-red-400">{t.loadoutCatalogError}</p>;
+  if (catalogLoading) return <p className="text-sm text-ice/55">{t.loadoutCatalogLoading}</p>;
+  if (catalogError) return <p className="text-sm text-red-300">{t.loadoutCatalogError}</p>;
 
   const owned = catalog.filter((entry) => ownedSkillIds.has(entry.skillId));
 
   return (
-    <div className="space-y-3 rounded border border-slate-800 bg-slate-900/60 p-3">
-      <h3 className="text-sm font-semibold text-slate-200">
+    <div className="space-y-3 rounded-2xl border border-white/10 bg-night/50 p-3">
+      <h3 className="font-display text-sm font-bold text-frost">
         {t.loadoutPickerTitle} ({selected.length}/{MAX_LOADOUT_SIZE})
       </h3>
 
       {savedLoadout && savedLoadout.length > 0 && (
-        <p className="text-xs text-emerald-400">
+        <p className="text-xs text-frost/70">
           {t.loadoutSaved}: {savedLoadout.map((id) => effectNames[catalog.find((c) => c.skillId === id)?.effectType ?? ""] ?? id).join(", ")}
         </p>
       )}
 
       {owned.length === 0 ? (
-        <p className="text-xs text-slate-400">{t.loadoutNoneOwned}</p>
+        <p className="text-xs text-ice/55">{t.loadoutNoneOwned}</p>
       ) : (
         <ul className="flex flex-wrap gap-2">
           {owned.map((entry) => {
@@ -73,14 +73,14 @@ export default function LoadoutPicker({
                   aria-pressed={isSelected}
                   disabled={disabled || saving}
                   onClick={() => onToggle(entry.skillId)}
-                  className={`rounded border px-3 py-2 text-left text-xs transition-colors ${
+                  className={`rounded-xl border px-3 py-2 text-left text-xs transition-all ${
                     isSelected
-                      ? "border-emerald-500 bg-emerald-600/20 text-emerald-200"
-                      : "border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
-                  } disabled:cursor-not-allowed disabled:opacity-40`}
+                      ? "-translate-y-0.5 border-frost bg-frost text-glacier-ink shadow-lg shadow-frost/20"
+                      : "border-white/12 bg-white/6 text-frost/85 hover:border-white/30 hover:bg-white/12"
+                  } disabled:cursor-not-allowed disabled:opacity-30`}
                 >
-                  <div className="font-semibold">{effectNames[entry.effectType] ?? entry.effectType}</div>
-                  <div className="text-slate-400">
+                  <div className="font-display font-bold">{effectNames[entry.effectType] ?? entry.effectType}</div>
+                  <div className="opacity-60">
                     #{entry.skillId} · {entry.charges}x · rarity {entry.rarity}
                   </div>
                 </button>
@@ -94,7 +94,7 @@ export default function LoadoutPicker({
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="rounded bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="rounded-full bg-glacier-deep px-5 py-2 font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
       >
         {saving ? t.loadoutSaving : t.loadoutSave}
       </button>

@@ -34,85 +34,93 @@ export default function MatchBoard({ view, playerId, onCall, pending, skillSelec
   const canCall = isMyTurn && !selecting && !pending;
 
   return (
-    <section className="space-y-4">
-      <h2 className="text-lg font-semibold">{t.title}</h2>
+    <section className="space-y-5 rounded-3xl border border-white/10 bg-night/55 p-4 backdrop-blur-md sm:p-6">
+      {/* Progres BINGO = kepala layar: paling besar, paling atas. */}
+      <div className="flex flex-col items-center gap-3">
+        <BingoLetters count={me?.lineCount ?? 0} />
 
-      {view.status === "in_progress" && (
-        <p
-          role="status"
-          className={`rounded px-3 py-2 text-center text-sm font-bold ${
-            isMyTurn ? "bg-emerald-600 text-white" : "bg-slate-800 text-slate-300"
-          }`}
-        >
-          {isMyTurn ? t.yourTurn : `${t.waitingTurn}: ${currentTurnPlayer?.nickname ?? ""}`}
-        </p>
-      )}
+        {view.status === "in_progress" && (
+          <p
+            role="status"
+            className={`rounded-full px-5 py-2 text-center font-display text-sm font-bold transition-colors ${
+              isMyTurn
+                ? "bg-frost text-glacier-ink shadow-lg shadow-frost/25"
+                : "border border-white/15 bg-night/50 text-ice/70"
+            }`}
+          >
+            {isMyTurn ? t.yourTurn : `${t.waitingTurn}: ${currentTurnPlayer?.nickname ?? ""}`}
+          </p>
+        )}
+      </div>
 
-      <div>
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold text-slate-300">{t.yourBoard}</h3>
-          <BingoLetters count={me?.lineCount ?? 0} />
-        </div>
-        {canCall && <p className="mb-2 text-xs text-indigo-300">{t.callHint}</p>}
+      {/* Board sendiri = tempat memanggil angka. Empat status sel dibedakan
+          jelas: ter-mark (putih solid), bisa diklik saat giliranku (biru
+          gletser + hover naik), target skill (kuning), dan diam (kaca). */}
+      <div className="flex flex-col items-center gap-2">
+        {canCall && <p className="font-display text-xs font-semibold text-glacier">{t.callHint}</p>}
         {view.board && (
-          <div className="grid max-w-xs grid-cols-5 gap-1.5 sm:gap-2">
-            {markedCellsFor(view.board, calledSet, new Set(view.ghostNumbers ?? []), view.daubedCells ?? []).map(
-              (marked, index) => {
-                const number = view.board![index]!;
-                if (selecting) {
-                  const picked = skillSelection!.cells.includes(index);
+          <div className="rounded-3xl bg-night/40 p-2.5 ring-1 ring-white/10">
+            <div className="grid grid-cols-5 gap-1.5">
+              {markedCellsFor(view.board, calledSet, new Set(view.ghostNumbers ?? []), view.daubedCells ?? []).map(
+                (marked, index) => {
+                  const number = view.board![index]!;
+                  if (selecting) {
+                    const picked = skillSelection!.cells.includes(index);
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        aria-pressed={picked}
+                        onClick={() => onSelectSkillCell!(index)}
+                        className={`size-12 rounded-xl font-display text-base font-bold transition-all sm:size-14 sm:text-lg ${
+                          picked
+                            ? "-translate-y-0.5 bg-amber-400 text-glacier-ink shadow-lg shadow-amber-400/30 ring-2 ring-amber-200"
+                            : "bg-white/8 text-frost ring-1 ring-amber-300/40 hover:-translate-y-0.5 hover:bg-amber-400/20"
+                        }`}
+                      >
+                        {number}
+                      </button>
+                    );
+                  }
+                  const callable = canCall && !marked;
                   return (
                     <button
                       key={index}
                       type="button"
-                      aria-pressed={picked}
-                      onClick={() => onSelectSkillCell!(index)}
-                      className={`aspect-square rounded text-base font-semibold sm:text-lg ${
-                        picked ? "bg-amber-500 text-slate-950" : "bg-slate-800 text-slate-100 hover:bg-slate-700"
+                      aria-pressed={marked}
+                      disabled={!callable}
+                      onClick={callable ? () => onCall(number) : undefined}
+                      className={`size-12 rounded-xl font-display text-base font-bold transition-all sm:size-14 sm:text-lg ${
+                        marked
+                          ? "bg-frost text-glacier-ink shadow-lg shadow-frost/20 ring-1 ring-frost"
+                          : callable
+                            ? "bg-glacier-deep text-frost ring-1 ring-glacier hover:-translate-y-0.5 hover:bg-glacier hover:shadow-lg hover:shadow-glacier/30"
+                            : "bg-white/6 text-ice/50 ring-1 ring-white/10"
                       }`}
                     >
                       {number}
                     </button>
                   );
-                }
-                const callable = canCall && !marked;
-                return (
-                  <button
-                    key={index}
-                    type="button"
-                    aria-pressed={marked}
-                    disabled={!callable}
-                    onClick={callable ? () => onCall(number) : undefined}
-                    className={`aspect-square rounded text-base font-semibold transition-colors sm:text-lg ${
-                      marked
-                        ? "bg-emerald-700 text-white"
-                        : callable
-                          ? "bg-indigo-700 text-white hover:bg-indigo-600"
-                          : "bg-slate-800 text-slate-200"
-                    }`}
-                  >
-                    {number}
-                  </button>
-                );
-              },
-            )}
+                },
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      <div>
-        <h3 className="mb-1 text-sm font-semibold text-slate-300">{t.calledNumbers}</h3>
+      <div className="space-y-1.5">
+        <h3 className="text-xs uppercase tracking-wide text-ice/45">{t.calledNumbers}</h3>
         {view.calledNumbers.length === 0 ? (
-          <p className="text-sm text-slate-500">{t.noCallsYet}</p>
+          <p className="text-xs text-ice/40">{t.noCallsYet}</p>
         ) : (
           <ol className="flex flex-wrap gap-1">
             {view.calledNumbers.map((number, index) => (
               <li
                 key={number}
-                className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold ${
+                className={`flex size-7 items-center justify-center rounded-full font-display text-xs font-bold ${
                   index === view.calledNumbers.length - 1
-                    ? "bg-indigo-600 text-white"
-                    : "bg-slate-800 text-slate-300"
+                    ? "bg-glacier text-frost ring-2 ring-frost/60"
+                    : "bg-white/8 text-ice/70"
                 }`}
               >
                 {number}
@@ -122,36 +130,31 @@ export default function MatchBoard({ view, playerId, onCall, pending, skillSelec
         )}
       </div>
 
-      <div>
-        <h3 className="mb-1 text-sm font-semibold text-slate-300">{t.playersTitle}</h3>
-        <table className="w-full border-collapse text-left text-sm">
-          <thead>
-            <tr className="border-b border-slate-800 text-xs uppercase text-slate-400">
-              <th scope="col" className="py-1 pr-2">
-                {strings[locale].landing.nicknameLabel}
-              </th>
-              <th scope="col" className="py-1 pr-2">
-                {t.lines}
-              </th>
-              <th scope="col" className="py-1 pr-2">
-                {t.currentTurn}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.players.map((player) => (
-              <tr key={player.playerId} className="border-b border-slate-900">
-                <td className="py-1 pr-2 font-medium text-slate-100">{player.nickname}</td>
-                <td className="py-1 pr-2 text-slate-300">
-                  <BingoLetters count={player.lineCount} compact />
-                </td>
-                <td className="py-1 pr-2 text-emerald-400">
-                  {player.playerId === view.currentTurnPlayerId ? "✓" : ""}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="space-y-1.5">
+        <h3 className="text-xs uppercase tracking-wide text-ice/45">{t.playersTitle}</h3>
+        <ul className="space-y-1.5">
+          {view.players.map((player) => {
+            const turn = player.playerId === view.currentTurnPlayerId;
+            return (
+              <li
+                key={player.playerId}
+                className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2 ${
+                  turn ? "bg-white/10 ring-1 ring-frost/40" : "bg-night/40 ring-1 ring-white/8"
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  {turn && (
+                    <span aria-hidden className="text-xs text-frost">
+                      ▶
+                    </span>
+                  )}
+                  <span className="truncate font-display text-sm font-bold text-frost">{player.nickname}</span>
+                </span>
+                <BingoLetters count={player.lineCount} compact />
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </section>
   );
