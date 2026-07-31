@@ -1,0 +1,65 @@
+---
+title: "Roadmap & Status"
+description: "What was planned, what's actually live, and what's still open"
+---
+
+## Original roadmap
+
+TheBingoFi's roadmap (from `CONCEPT.md` §9) was laid out in four phases:
+
+| Phase | Plan |
+|---|---|
+| **W1** | Finalize the concept and apply to GASOK (deadline: July 31). |
+| **W2–4** | Prototype web2 gameplay (no chain involved) + balance the 5 launch skills + ship the Daily Challenge. |
+| **W5–6** | Deploy `SkillRegistry`/`SkillFactory`/`SkillCollection` to GIWA Sepolia + an indexer + the quest engine and leaderboard. |
+| **W7–8** | Ship the Marketplace + wire up ownership integration + friends/private room/share card → MVP demo. |
+
+## Actual status against that plan
+
+<Check>Gameplay engine, 5 skills, Nullify counterplay, Daily Challenge (W2–4 scope) — done, and unit-tested.</Check>
+<Check>All 4 contracts, including Marketplace, deployed and verified on GIWA Sepolia (W5–6 **and** W7–8 contract scope) — done. The Marketplace shipped beyond the original plan with a full dynamic-pricing model (scarcity ramp + demand decay), not just a static-price sale.</Check>
+<Check>Quest engine (including the VS Bot ladder) and the Daily Challenge leaderboard (W5–6 scope) — done.</Check>
+<Check>Wallet ownership integration — linking a wallet and verifying an on-chain loadout against real ownership (W7–8 scope) — done.</Check>
+<Check>Private rooms via a join code (W7–8 scope) — done, as part of Create Room / Quick Match.</Check>
+<Check>Daily Challenge share card, in Indonesian and English (W7–8 scope) — done.</Check>
+<Warning>A **chain indexer** (W5–6 scope) was explicitly **not built**. The server instead does live, per-request reads (e.g. `balanceOfBatch` on every `loadout:set`) — see [Architecture](/architecture). This trades a cached index for always-current entitlements, and was a deliberate choice, not an oversight.</Warning>
+<Warning>**Friends/referral** (W7–8 scope) is **not built** — see the list below.</Warning>
+
+Beyond the original roadmap's scope, the project also shipped: guest-friendly Plaza chat with skill showcase, public shareable profiles, VS Bot (10 levels) with instant-start matches, Quick Match and a public Room Browser, and Postgres-backed persistence for accounts/quests/daily scores/chat (optional — the server runs fully in-memory without it).
+
+## What isn't live yet
+
+<AccordionGroup>
+  <Accordion title="No chain indexer">
+    Entitlement checks use live on-chain reads instead of a cached index (see [Architecture](/architecture)). Functionally complete, but every `loadout:set` costs an RPC round-trip rather than an index lookup.
+  </Accordion>
+  <Accordion title="No reconnect grace period">
+    If a player disconnects mid-match, the match is aborted immediately — there's no window to reconnect and resume.
+  </Accordion>
+  <Accordion title="Public RPC is rate-limited">
+    The server's default RPC endpoint (`https://sepolia-rpc.giwa.io/`) is GIWA's shared public endpoint, explicitly not meant for high production traffic. A dedicated/paid RPC provider would be needed before scaling traffic significantly.
+  </Accordion>
+  <Accordion title="Social features from the original design">
+    Friends/referral, club/guild, spectator mode, in-match emotes, weekend/monthly tournament events, and a Season Pass are all part of the original design (`CONCEPT.md` §7) but not implemented. See [Social & Growth](/social-growth) for the full breakdown of what is live.
+  </Accordion>
+  <Accordion title="Broader leaderboards">
+    Only the Daily Challenge leaderboard exists. Global, weekly, friends-only, and club leaderboards described in the original design are not implemented.
+  </Accordion>
+  <Accordion title="Peer-to-peer marketplace">
+    Only the platform's primary sale (`Marketplace.buy()`) exists. User-to-user secondary listings/escrow are not built — secondary trades today would rely on a third-party NFT marketplace, subject to the same 5% EIP-2981 royalty.
+  </Accordion>
+  <Accordion title="Plaza moderation">
+    Plaza chat currently has a rate limit (1 message / 2s / socket) and a message-length cap (280 characters) — report/mute tooling described in the original design isn't built yet.
+  </Accordion>
+  <Accordion title="GIWA ecosystem integrations">
+    GIWA ID (on-chain username) and Dojang (KYC attestation for verified/ranked play) are identified in the design as ecosystem integrations worth pursuing, but neither is wired into the live product.
+  </Accordion>
+</AccordionGroup>
+
+## Test status (verified against source, not just documentation)
+
+| Suite | Result |
+|---|---|
+| Contracts (`forge test`) | 52/52 passing |
+| Contracts (`forge coverage`) | 100% lines, statements, branches, and functions |
+| Server (`node --test`) | 230 total — 228 passing, 2 skipped by default (opt-in integration tests that need a live chain node or a scratch Postgres database) |

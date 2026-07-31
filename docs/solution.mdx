@@ -1,0 +1,38 @@
+---
+title: "Solution"
+description: "Strategic bingo, Skill NFTs as abilities, and gameplay that stays 100% off-chain"
+---
+
+TheBingoFi answers each problem in [Problem](/problem) with a specific, already-implemented design choice — not a roadmap promise.
+
+## Strategic bingo, not luck-of-the-draw bingo
+
+Two rule changes turn bingo from a passive luck game into an active strategy game:
+
+1. **You draft your own board.** Before a match starts, every player privately arranges the numbers 1–25 on their own 5×5 board during a draft phase. Opponents' boards are hidden. Where you place a number is a real decision — it determines which lines you're close to completing.
+2. **Players call the numbers, in turns — not a random caller.** There is no house RNG drawing balls. Players take turns choosing which number to call next, and a called number is marked on every board in the match simultaneously. This is the core strategic loop: on your turn you're weighing "which number helps my board most" against "which number I should avoid calling because it helps an opponent more."
+
+Winning is still the familiar bingo goal — first player to complete 5 lines (horizontal, vertical, or diagonal), spelling **B-I-N-G-O** as each line completes — but getting there now depends on the decisions both players made, not just the luck of a draw.
+
+## Skill NFTs as abilities, not power-ups for sale
+
+Skills are modeled after chess pieces, not RPG stat boosts: each of the 5 launch skills is a specific, well-defined move (mark a cell without it being called, call two numbers in one turn, etc. — full list in [Skill System](/skill-system)) with a hard charge limit (typically once per match) and a maximum loadout of 2 skills per player. Every skill has a counter (**Nullify**), so having a skill doesn't guarantee it lands — the meta is closer to rock-paper-scissors than a stat war. Skill effect strength is kept flat across rarity tiers by design: a rare copy of Wild Daub does exactly what a common copy does. Rarity sells visual identity and prestige (see [Skill System](/skill-system) and [Economy & Business Model](/economy)), not power.
+
+## Gameplay runs 100% off-chain
+
+Every rule of the match — whose turn it is, whether a number was already called, whether a skill use is legal, whether 5 lines are complete — is validated by the authoritative game server, not the blockchain and not the client. No transaction, signature, or gas fee is required at any point during a match. A guest player can join and finish a full game without ever connecting a wallet. See [Architecture](/architecture) for how the server enforces this.
+
+## Wallet is only for ownership
+
+The wallet only ever does two things in TheBingoFi: buying/holding Skill and Skin NFTs, and (optionally) linking that wallet so a purchased skill can be used in a `standard`-mode match loadout. It is never involved in the act of playing.
+
+## Explicitly non-gambling
+
+This is a hard constraint, not a marketing line:
+
+- **No stake.** Joining or playing a match never requires putting anything at risk.
+- **No pot, no pool.** There is no shared prize pool that winners draw from.
+- **No token.** There is no fungible/tradeable in-game currency or platform token of any kind.
+- **Reward for winning is XP, season points, leaderboard placement, and non-tradeable cosmetic items — never money, never a token.**
+
+The only money that ever moves is a player voluntarily buying a Skill or Skin NFT from the platform (or from another player on a secondary market, subject to royalty) — a purchase of a cosmetic/ability item, structurally identical to buying a skin in any conventional free-to-play game, just represented as an NFT.

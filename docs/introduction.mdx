@@ -1,0 +1,53 @@
+---
+title: "Introduction"
+description: "What TheBingoFi is, and why it exists"
+---
+
+**TheBingoFi** is a free-to-play, multiplayer strategic bingo game where gameplay is 100% off-chain (web2) and cosmetic/ability ownership is on-chain (web3): players draft their own 5×5 board and take turns calling numbers to be the first to complete 5 lines, while an optional layer of **Skill NFTs** — active ability cards similar to chess pieces — adds strategy on top of the classic game. The platform's only revenue is the primary and secondary sale of these Skill/Skin NFTs on **GIWA**, an OP Stack Ethereum L2; there is no betting, no stake, no pot, and no token of any kind.
+
+## Positioning: "web2 gameplay, web3 ownership"
+
+This is the project's core thesis, and it shapes every design decision documented in this site:
+
+- **Web2 gameplay** — a match runs entirely on the game server. No wallet connection, no transaction, and no gas fee is ever required to play a match, from the draft phase through calling numbers to the win screen. A player can start a guest game within seconds of opening the app.
+- **Web3 ownership** — the only place blockchain shows up is buying, holding, and (on secondary markets) reselling Skill/Skin NFTs. Wallet connection is required strictly for that, and for using a purchased skill's loadout in `standard` mode matches.
+
+## Status: live today
+
+<CardGroup cols={2}>
+  <Card title="Smart contracts" icon="file-contract">
+    4 contracts (`SkillRegistry`, `SkillFactory`, `SkillCollection`, `Marketplace`) deployed and **verified** on **GIWA Sepolia** (chain ID `91342`) on Blockscout. See [Smart Contracts](/smart-contracts) for addresses.
+  </Card>
+  <Card title="Web client" icon="browser" href="https://thebingofi.vercel.app">
+    Next.js client live at [thebingofi.vercel.app](https://thebingofi.vercel.app), deployed on Vercel.
+  </Card>
+  <Card title="Game server" icon="server">
+    Node.js realtime + HTTP API live on Railway, backing all guest/room/daily-challenge/quest/Plaza traffic.
+  </Card>
+  <Card title="Tested" icon="flask">
+    52/52 Foundry contract tests passing (100% line/statement/branch/function coverage); 230 server unit/integration tests (228 passing, 2 opt-in tests skipped by default).
+  </Card>
+</CardGroup>
+
+<Note>
+  GIWA Sepolia is a **testnet**. GIWA mainnet does not exist yet (still in development) — every deployment referenced in this documentation targets Sepolia.
+</Note>
+
+## What this documentation covers
+
+This site is TheBingoFi's whitepaper: game design, the skill system, the on-chain economy, the architecture that separates gameplay from ownership, the deployed smart contracts, and an honest accounting of what is live versus what is still planned. Every number in it (prices, supply, chain IDs, contract addresses, test counts) is pulled directly from the project's source of truth documents and code — nothing here is a projection or an estimate.
+
+<CardGroup cols={2}>
+  <Card title="Problem" icon="triangle-exclamation" href="/problem">
+    Why classic bingo and typical GameFi both fall short.
+  </Card>
+  <Card title="Solution" icon="lightbulb" href="/solution">
+    How strategic bingo + Skill NFTs + off-chain gameplay solve it.
+  </Card>
+  <Card title="Gameplay" icon="dice" href="/gameplay">
+    Board, draft phase, turn-based calling, winning, match modes.
+  </Card>
+  <Card title="Smart Contracts" icon="link" href="/smart-contracts">
+    The 4 deployed contracts, addresses, and dynamic pricing.
+  </Card>
+</CardGroup>

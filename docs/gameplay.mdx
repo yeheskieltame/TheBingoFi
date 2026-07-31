@@ -1,0 +1,66 @@
+---
+title: "Gameplay"
+description: "Board, draft phase, turn-based calling, winning, and how players get into a match"
+---
+
+## The board
+
+Every player plays on their own **5×5 board** containing the numbers 1–25. Boards are per-player and private — an opponent's board layout is never shown to you, before or during the match.
+
+## Draft phase
+
+Before a match starts, every player arranges their own board during a **draft phase**: you place the numbers 1–25 into your 5×5 grid however you like (25 unique numbers, no duplicates). This is the first strategic decision of the match — your placement determines which lines are close to each other. The match only moves from `draft` to `playing` once **every** player has submitted a valid board.
+
+## Turn-based calling
+
+Numbers are not drawn by a random caller. Instead, **players take turns calling a number** themselves. Whichever number is called gets marked on *every* board in the match at once (subject to the Ghost Call skill exception — see [Skill System](/skill-system)). This is what separates TheBingoFi from classic bingo: on your turn, you have to weigh which number helps your own board against which number you should avoid calling because it helps an opponent close a line.
+
+## Winning: 5 lines, B-I-N-G-O
+
+A **line** is 5 marked numbers in a row — horizontal, vertical, or diagonal. The **winner is the first player to complete 5 lines**. Each completed line lights up one letter of B-I-N-G-O in order (1 line = B, 2 lines = B-I, … 5 lines = B-I-N-G-O), so the win condition is visually legible as it happens.
+
+## Players per room
+
+A room supports **2 to 5 players**, set by whoever creates the room (target player count is configurable in that 2–5 range; a Quick Match room targets a specific size the same way).
+
+## Match modes
+
+<Tabs>
+  <Tab title="Casual">
+    No skills at all. This is the default mode and the mode used by Quick Match. Fully accessible to guest players with no wallet.
+  </Tab>
+  <Tab title="Standard">
+    Skill loadouts are active. Requires the player to have linked a wallet to set a loadout (see [Skill System](/skill-system)) — players who don't set one simply play without skills, same as Casual.
+  </Tab>
+</Tabs>
+
+<Note>
+  The original game design (see `CONCEPT.md`) also describes a **Ranked** mode (loadout + skill-tier matchmaking) alongside Casual and Standard. Ranked is not implemented in the live server today — only Casual and Standard modes exist in the current room API.
+</Note>
+
+## Getting into a match without waiting
+
+TheBingoFi offers four ways to start playing, all designed so a player is never stuck waiting in an empty lobby:
+
+<AccordionGroup>
+  <Accordion title="Quick Match (VS Player)">
+    Pick a target player count (2–5) and the server either joins you to a matching public quick-match room or creates a new one. These rooms are always Casual (no skill loadout) and **auto-start** the draft phase the instant the room fills — no host action required.
+  </Accordion>
+  <Accordion title="Room Browser">
+    Browse a live list of open public rooms (host nickname, players filled/target, mode) and join with one click. Private rooms never appear here, nor do rooms that have already moved past the lobby phase.
+  </Accordion>
+  <Accordion title="Create Room">
+    Manually create a room: choose target player count (2–5), mode (Casual/Standard), and whether it's public (shows up in the Room Browser) or private (code-only, shared manually). The host starts the draft phase once ready.
+  </Accordion>
+  <Accordion title="VS Bot">
+    Play solo against a bot at **10 difficulty levels** — Level 1 calls numbers almost at random, Level 10 always calls the statistically optimal number. The bot only ever sees public information (its own board plus the numbers already called) — it never has access to the human player's board, so it's fair by construction. A VS Bot match is always Casual, always private, and starts instantly with no lobby wait: the bot has already submitted its own board, so as soon as the human submits theirs, the match begins with the human going first.
+  </Accordion>
+</AccordionGroup>
+
+### VS Bot as a progression ladder
+
+Beating higher-level bots isn't just difficulty scaling — it's wired into the quest system as a **bot ladder**: dedicated milestone quests exist for beating Bot Lv1, Lv3, Lv5, Lv7, and Lv10 (each rewarding XP and season points, with Lv10 also granting a cosmetic profile badge). Beating a higher-level bot automatically completes every lower milestone at once — beating Lv5, for example, completes the Lv1, Lv3, and Lv5 quests simultaneously. This ladder is also the game's suggested onboarding path: new players are pointed at bot matches before jumping into multiplayer rooms.
+
+## Winning rewards
+
+Winning a match completes quests that reward **XP, season points, and non-tradeable cosmetic items** — never money, never a token (see [Solution](/solution) and [Economy & Business Model](/economy)). A dedicated match-win leaderboard is part of the original design (see [Social & Growth](/social-growth) for what's live today); the leaderboard that exists in the live server today is scoped to the Daily Challenge.

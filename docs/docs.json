@@ -1,0 +1,65 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "TheBingoFi",
+  "description": "TheBingoFi whitepaper and documentation — a free-to-play, non-gambling strategic bingo game with web2 gameplay and web3 (NFT) ownership on GIWA.",
+  "colors": {
+    "primary": "#3a7cb8",
+    "light": "#cbdff2",
+    "dark": "#1d4d7d"
+  },
+  "favicon": "/favicon.ico",
+  "logo": {
+    "light": "/logo/logo.svg",
+    "dark": "/logo/logo.svg",
+    "href": "/introduction"
+  },
+  "navigation": {
+    "pages": [
+      {
+        "group": "Overview",
+        "pages": [
+          "introduction",
+          "problem",
+          "solution"
+        ]
+      },
+      {
+        "group": "Product",
+        "pages": [
+          "gameplay",
+          "skill-system",
+          "economy",
+          "social-growth"
+        ]
+      },
+      {
+        "group": "Technical",
+        "pages": [
+          "architecture",
+          "smart-contracts"
+        ]
+      },
+      {
+        "group": "Project",
+        "pages": [
+          "roadmap-status",
+          "faq"
+        ]
+      }
+    ]
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "GitHub",
+        "href": "https://github.com/yeheskieltame/TheBingoFi"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Launch App",
+      "href": "https://thebingofi.vercel.app"
+    }
+  }
+}
