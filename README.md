@@ -103,6 +103,26 @@ pnpm test:server      # node --test (217 test: engine, skill, bot, daily, quest,
 - `server/API.md` — kontrak lengkap: event Socket.IO (typed, import dari `@thebingofi/server/protocol`) + HTTP API (daily challenge, leaderboard, quests).
 - `contracts/abi/*.json` + `contracts/deployments/91342.json` — ABI & address untuk wagmi/viem (lihat `contracts/README.md`).
 
+## Live
+
+| Bagian | URL |
+|---|---|
+| Web (Vercel) | https://thebingofi.vercel.app |
+| Server (Railway) | https://server-production-623e.up.railway.app |
+
+Web di-deploy dari **root repo** dengan project setting *Root Directory* = `web`
+— wajib, karena `web/` mengimpor workspace `@thebingofi/server` dan file
+`contracts/abi/*.json` + `contracts/deployments/91342.json` di luar foldernya.
+Deploy dari dalam `web/` saja akan gagal (`npm error Unsupported URL Type
+"workspace:"`, karena `pnpm-lock.yaml` root tidak ikut ter-upload).
+
+```bash
+vercel --prod          # dari root repo, .vercel/ ada di root
+```
+
+Env yang harus ada di Vercel: `NEXT_PUBLIC_SERVER_URL` =
+URL server Railway (bukan localhost).
+
 ## Deploy Server (Railway)
 
 Server live: **https://server-production-623e.up.railway.app** (health: `/health`).

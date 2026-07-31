@@ -24,3 +24,6 @@ contracts/broadcast/**/dry-run/
 contracts/deployments/31337.json
 contracts/broadcast/**/31337/
 contracts/cache/**/31337/
+
+# vercel
+.vercel/
