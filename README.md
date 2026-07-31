@@ -110,6 +110,7 @@ pnpm test:server      # node --test (230 test: engine, skill, bot, daily, quest,
 | Bagian | URL |
 |---|---|
 | Web (Vercel) | https://thebingofi.vercel.app |
+| Docs / Whitepaper (Mintlify) | https://the-bingo-fi-a4951ed8.mintlify.site |
 | Server (Railway) | https://server-production-623e.up.railway.app |
 
 Web di-deploy dari **root repo** dengan project setting *Root Directory* = `web`

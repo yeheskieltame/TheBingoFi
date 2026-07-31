@@ -96,8 +96,9 @@ Friends/referral, club/guild, spectator, emote in-match, event weekend/tournamen
 
 | Butuh apa | Lihat |
 |---|---|
+| Whitepaper (produk, ekonomi, arsitektur) | https://the-bingo-fi-a4951ed8.mintlify.site |
 | Cara jalanin + **daftar komponen & props** | [web/README.md](web/README.md) |
 | Konsep & game design lengkap (rules, skill, ekonomi, social) | [CONCEPT.md](CONCEPT.md) |
 | Arsitektur + kontrak live GIWA Sepolia | [README.md](README.md) |
 | API server (kalau penasaran — tidak wajib) | [server/API.md](server/API.md) |
-| Status teknis: 217 test server, 52 test kontrak (coverage 100%), build hijau | — |
+| Status teknis: 230 test server, 52 test kontrak (coverage 100%), build hijau | — |
