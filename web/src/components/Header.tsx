@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -81,8 +82,10 @@ export default function Header() {
         <Link
           href="/"
           title={t.nav.home}
-          className="font-display text-2xl font-bold tracking-tight text-frost transition-opacity hover:opacity-80 md:justify-self-start"
+          className="flex items-center gap-2 font-display text-2xl font-bold tracking-tight text-frost transition-opacity hover:opacity-80 md:justify-self-start"
         >
+          {/* Mark dekoratif: wordmark di sebelahnya sudah jadi nama aksesibel link. */}
+          <Image src="/logo.svg" alt="" aria-hidden width={28} height={28} priority className="size-7" />
           {t.landing.title}
         </Link>
 

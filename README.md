@@ -1,3 +1,5 @@
+<img src="assets/logo.png" alt="TheBingoFi" width="96" />
+
 # TheBingoFi
 
 Bingo strategis multiplayer, free-to-play, non-gambling. Gameplay 100% web2 (nol transaksi saat main); monetisasi lewat Skill & Skin NFT di GIWA (OP Stack L2). Konsep lengkap: [CONCEPT.md](CONCEPT.md).
