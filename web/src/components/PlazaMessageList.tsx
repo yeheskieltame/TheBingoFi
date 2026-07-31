@@ -48,14 +48,14 @@ export default function PlazaMessageList({ messages, skillName, skillTier }: Pla
 
   if (messages.length === 0) {
     return (
-      <p className="flex h-96 items-center justify-center rounded-3xl border border-white/10 bg-night/50 text-sm text-ice/45 backdrop-blur-md">
+      <p className="flex h-[55vh] min-h-64 items-center justify-center sm:h-96 rounded-3xl border border-white/10 bg-night/50 text-sm text-ice/45 backdrop-blur-md">
         {t.emptyHistory}
       </p>
     );
   }
 
   return (
-    <ul className="flex h-96 flex-col gap-3 overflow-y-auto rounded-3xl border border-white/10 bg-night/50 p-4 backdrop-blur-md">
+    <ul className="flex h-[55vh] min-h-64 flex-col gap-3 overflow-y-auto rounded-3xl border border-white/10 bg-night/50 p-3 backdrop-blur-md sm:h-96 sm:p-4">
       {messages.map((message) => (
         <li key={message.id} className="flex gap-2.5 text-sm">
           <span

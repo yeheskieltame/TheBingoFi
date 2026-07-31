@@ -43,7 +43,7 @@ export default function DailyPage() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl py-6">
+    <main className="mx-auto max-w-5xl py-4 sm:py-6">
 
       <div className="mx-auto w-full max-w-md space-y-5 text-center">
       {/* Kartu utama: art potret jadi latar KARTU (bukan latar halaman).

@@ -76,10 +76,10 @@ export default function ProfileView({ address }: ProfileViewProps) {
     <main className="mx-auto max-w-3xl space-y-6 py-6">
       {/* Kartu identitas: ini "kartu nama" yang dibagikan keluar, jadi alamat,
           jumlah koleksi, dan tombol share duduk dalam satu blok. */}
-      <section className="rounded-3xl border border-white/10 bg-night/55 p-6 backdrop-blur-md">
-        <div className="flex flex-wrap items-end justify-between gap-4">
+      <section className="rounded-3xl border border-white/10 bg-night/55 p-4 backdrop-blur-md sm:p-6">
+        <div className="flex flex-wrap items-end justify-between gap-3 sm:gap-4">
           <div className="space-y-1">
-            <h1 className="font-display text-2xl font-bold tracking-tight text-frost sm:text-3xl">{t.heading}</h1>
+            <h1 className="font-display text-xl font-bold tracking-tight text-frost sm:text-3xl">{t.heading}</h1>
             <p className="font-mono text-sm text-ice/50" title={address}>
               {truncateAddress(address)}
             </p>

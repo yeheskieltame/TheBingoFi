@@ -73,10 +73,10 @@ export default function Lobby({
     <section className="space-y-4 rounded-3xl border border-white/10 bg-night/55 p-4 backdrop-blur-md sm:p-6">
       <h2 className="text-center font-display text-xl font-bold text-frost">{t.lobby.title}</h2>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-night/50 p-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-night/50 p-3 sm:gap-3">
         <dl className="flex items-baseline gap-2">
           <dt className="text-xs uppercase tracking-wide text-ice/45">{t.roomCodeLabel}</dt>
-          <dd className="font-mono text-2xl font-bold tracking-[0.3em] text-frost">{code}</dd>
+          <dd className="font-mono text-xl font-bold tracking-[0.2em] text-frost sm:text-2xl sm:tracking-[0.3em]">{code}</dd>
         </dl>
         <button
           type="button"
@@ -105,7 +105,7 @@ export default function Lobby({
         <section className="space-y-3 rounded-2xl border border-white/10 bg-night/40 p-3">
           <h3 className="font-display text-sm font-bold text-frost">{t.lobby.loadoutTitle}</h3>
           <p className="text-sm text-ice/70">
-            {t.lobby.walletLabel}: <span className="font-mono">{me?.wallet ?? t.lobby.walletNotLinked}</span>
+            {t.lobby.walletLabel}: <span className="break-all font-mono">{me?.wallet ?? t.lobby.walletNotLinked}</span>
           </p>
 
           {!me?.wallet && (

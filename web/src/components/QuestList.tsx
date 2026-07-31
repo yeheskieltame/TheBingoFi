@@ -52,7 +52,7 @@ export default function QuestList({ quests, progress }: QuestListProps) {
           <section key={window} className="space-y-3">
             {/* Sub-judul bergaris bawah pendek, seperti "GOAL" di panel misi game. */}
             <div className="flex items-baseline justify-center gap-2">
-              <h2 className="border-b border-glacier/60 pb-1.5 font-display text-base font-bold uppercase tracking-[0.25em] text-frost">
+              <h2 className="border-b border-glacier/60 pb-1.5 font-display text-sm font-bold uppercase tracking-[0.18em] text-frost sm:text-base sm:tracking-[0.25em]">
                 {windowLabel[window] ?? window}
               </h2>
               <span className="font-mono text-xs text-ice/40">
@@ -65,16 +65,19 @@ export default function QuestList({ quests, progress }: QuestListProps) {
                 const { count, completed } = progressFor(quest);
 
                 return (
-                  <li key={quest.id} className="flex items-center gap-3 px-1 py-2.5">
-                    <span className={`min-w-0 flex-1 truncate text-base ${completed ? "text-frost" : "text-frost/75"}`}>
+                  <li key={quest.id} className="flex items-center gap-2 px-1 py-2.5 sm:gap-3">
+                    <span
+                      className={`min-w-0 flex-1 truncate text-sm sm:text-base ${completed ? "text-frost" : "text-frost/75"}`}
+                    >
                       {quest.title}
                     </span>
 
                     {/* Garis titik-titik penghubung: menjaga angka tetap rata kanan
-                        walau panjang judul quest berbeda-beda. */}
-                    <span aria-hidden className="h-px flex-1 border-b border-dotted border-white/15" />
+                        walau panjang judul quest berbeda-beda. Disembunyikan di HP -
+                        di sana ruangnya lebih berguna untuk judul quest. */}
+                    <span aria-hidden className="hidden h-px flex-1 border-b border-dotted border-white/15 sm:block" />
 
-                    <span className="shrink-0 font-mono text-base text-ice/70">
+                    <span className="shrink-0 font-mono text-sm text-ice/70 sm:text-base">
                       [{count}/{quest.target}]
                     </span>
 
@@ -92,7 +95,7 @@ export default function QuestList({ quests, progress }: QuestListProps) {
                       {completed ? t.done : `${count}/${quest.target}`} · +{quest.reward.xp} {t.table.reward}
                     </span>
 
-                    <span className="w-16 shrink-0 text-right font-mono text-xs text-ice/35">
+                    <span className="w-11 shrink-0 text-right font-mono text-[0.65rem] text-ice/35 sm:w-16 sm:text-xs">
                       +{quest.reward.xp}xp
                     </span>
                   </li>

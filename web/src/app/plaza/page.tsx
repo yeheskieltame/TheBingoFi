@@ -79,10 +79,10 @@ export default function PlazaPage() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl space-y-4 py-6">
+    <main className="mx-auto max-w-2xl space-y-4 py-4 sm:py-6">
 
       <header className="text-center">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-frost sm:text-3xl">{t.title}</h1>
+        <h1 className="font-display text-xl font-bold tracking-tight text-frost sm:text-3xl">{t.title}</h1>
         <p className="mx-auto max-w-md text-sm text-frost/60">{t.subtitle}</p>
       </header>
 

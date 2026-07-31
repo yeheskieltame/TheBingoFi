@@ -44,7 +44,7 @@ export default function MatchResult({ winnerId, reason, players, onBackToLanding
       initial={{ opacity: 0, scale: 0.92, y: 16 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       transition={{ type: "spring", stiffness: 320, damping: 26 }}
-      className={`relative overflow-hidden rounded-3xl border p-8 text-center backdrop-blur-md ${
+      className={`relative overflow-hidden rounded-3xl border p-5 text-center backdrop-blur-md sm:p-8 ${
         winnerId ? "border-frost/30 bg-gradient-to-b from-glacier-deep/50 to-night" : "border-white/10 bg-night/60"
       }`}
     >
@@ -53,7 +53,9 @@ export default function MatchResult({ winnerId, reason, players, onBackToLanding
       )}
 
       <div className="relative space-y-5">
-        <h2 className="font-display text-2xl font-bold uppercase tracking-[0.2em] text-frost/70">{t.title}</h2>
+        <h2 className="font-display text-xl font-bold uppercase tracking-[0.15em] text-frost/70 sm:text-2xl sm:tracking-[0.2em]">
+          {t.title}
+        </h2>
 
         {winnerId ? (
           <>
@@ -68,7 +70,9 @@ export default function MatchResult({ winnerId, reason, players, onBackToLanding
 
             <div className="space-y-1">
               <p className="text-xs uppercase tracking-wide text-ice/45">{t.winner}</p>
-              <p className="font-display text-3xl font-bold text-frost sm:text-4xl">{winner?.nickname ?? winnerId}</p>
+              <p className="break-words font-display text-2xl font-bold text-frost sm:text-4xl">
+                {winner?.nickname ?? winnerId}
+              </p>
             </div>
           </>
         ) : (
