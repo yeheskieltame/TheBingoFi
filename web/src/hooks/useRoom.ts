@@ -11,6 +11,7 @@ import type {
 } from "@thebingofi/server/protocol";
 import type { SkillArgs } from "@thebingofi/server/engine";
 
+import { ensureIdentity } from "@/lib/identity";
 import { deriveRoomPhase, type RoomUiPhase } from "@/lib/roomPhase";
 import { getSocket } from "@/lib/socket";
 import { setStoredPlayerId } from "@/lib/storage";
@@ -168,63 +169,99 @@ export function useRoom() {
     };
   }, []);
 
+  /**
+   * Best-effort identity handshake (lib/identity.ts's `ensureIdentity`) run
+   * before an action that wants a stable accountId attached to this socket
+   * - room:create/join/quick/createBot (server/API.md's "Identity" section).
+   * Never blocks or fails `run`: if the handshake errors for any reason
+   * (network hiccup, server down, ...) the server still lets this socket
+   * play under a fresh anonymous per-connection identity, so the error is
+   * swallowed and `run` proceeds regardless. `ensureIdentity` itself
+   * memoizes per socket connection, so calling this repeatedly (once per
+   * room action) only ever emits `identity:hello` once per connection.
+   */
+  const withIdentity = useCallback((run: () => void) => {
+    ensureIdentity(socketRef.current)
+      .catch(() => {
+        // Intentionally ignored - see doc comment above.
+      })
+      .then(run);
+  }, []);
+
   /** Options mirror RoomCreatePayload's maxPlayers/isPublic (server/API.md's "Create Room" - 2-5 players, public/private). */
   const createRoom = useCallback(
     (nickname: string, mode?: "casual" | "standard", options?: { maxPlayers?: number; isPublic?: boolean }) => {
       dispatch({ type: "pending", value: true });
-      socketRef.current.emit(
-        "room:create",
-        { nickname, mode, maxPlayers: options?.maxPlayers, isPublic: options?.isPublic },
-        (res) => {
+      withIdentity(() => {
+        socketRef.current.emit(
+          "room:create",
+          { nickname, mode, maxPlayers: options?.maxPlayers, isPublic: options?.isPublic },
+          (res) => {
+            if (!res.ok) {
+              dispatch({ type: "error", message: res.error });
+              return;
+            }
+            setStoredPlayerId(res.playerId);
+            dispatch({ type: "joined", code: res.code, playerId: res.playerId, view: res.view, entryKind: "create" });
+          },
+        );
+      });
+    },
+    [withIdentity],
+  );
+
+  const joinRoom = useCallback(
+    (code: string, nickname: string) => {
+      dispatch({ type: "pending", value: true });
+      withIdentity(() => {
+        socketRef.current.emit("room:join", { code, nickname }, (res) => {
           if (!res.ok) {
             dispatch({ type: "error", message: res.error });
             return;
           }
           setStoredPlayerId(res.playerId);
-          dispatch({ type: "joined", code: res.code, playerId: res.playerId, view: res.view, entryKind: "create" });
-        },
-      );
+          dispatch({ type: "joined", code: res.code, playerId: res.playerId, view: res.view, entryKind: "join" });
+        });
+      });
     },
-    [],
+    [withIdentity],
   );
 
-  const joinRoom = useCallback((code: string, nickname: string) => {
-    dispatch({ type: "pending", value: true });
-    socketRef.current.emit("room:join", { code, nickname }, (res) => {
-      if (!res.ok) {
-        dispatch({ type: "error", message: res.error });
-        return;
-      }
-      setStoredPlayerId(res.playerId);
-      dispatch({ type: "joined", code: res.code, playerId: res.playerId, view: res.view, entryKind: "join" });
-    });
-  }, []);
-
   /** Quick Match (CONCEPT.md §2b): join a matching public casual room or create one - see server/API.md's "Quick Match & Room Browser". */
-  const quickMatch = useCallback((nickname: string, size: number) => {
-    dispatch({ type: "pending", value: true });
-    socketRef.current.emit("room:quick", { nickname, size }, (res) => {
-      if (!res.ok) {
-        dispatch({ type: "error", message: res.error });
-        return;
-      }
-      setStoredPlayerId(res.playerId);
-      dispatch({ type: "joined", code: res.code, playerId: res.playerId, view: res.view, entryKind: "quick" });
-    });
-  }, []);
+  const quickMatch = useCallback(
+    (nickname: string, size: number) => {
+      dispatch({ type: "pending", value: true });
+      withIdentity(() => {
+        socketRef.current.emit("room:quick", { nickname, size }, (res) => {
+          if (!res.ok) {
+            dispatch({ type: "error", message: res.error });
+            return;
+          }
+          setStoredPlayerId(res.playerId);
+          dispatch({ type: "joined", code: res.code, playerId: res.playerId, view: res.view, entryKind: "quick" });
+        });
+      });
+    },
+    [withIdentity],
+  );
 
   /** VS Bot (CONCEPT.md §2b): private casual room against a bot, jumps straight to draft - see server/API.md's "VS Bot". */
-  const createBotRoom = useCallback((nickname: string, level: number) => {
-    dispatch({ type: "pending", value: true });
-    socketRef.current.emit("room:createBot", { nickname, level }, (res) => {
-      if (!res.ok) {
-        dispatch({ type: "error", message: res.error });
-        return;
-      }
-      setStoredPlayerId(res.playerId);
-      dispatch({ type: "joined", code: res.code, playerId: res.playerId, view: res.view, entryKind: "bot" });
-    });
-  }, []);
+  const createBotRoom = useCallback(
+    (nickname: string, level: number) => {
+      dispatch({ type: "pending", value: true });
+      withIdentity(() => {
+        socketRef.current.emit("room:createBot", { nickname, level }, (res) => {
+          if (!res.ok) {
+            dispatch({ type: "error", message: res.error });
+            return;
+          }
+          setStoredPlayerId(res.playerId);
+          dispatch({ type: "joined", code: res.code, playerId: res.playerId, view: res.view, entryKind: "bot" });
+        });
+      });
+    },
+    [withIdentity],
+  );
 
   /**
    * Room Browser (CONCEPT.md §2b): one-shot room:list fetch. Returns a

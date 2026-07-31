@@ -69,6 +69,7 @@ socket.emit("room:create", { nickname: "Alice" }, (res) => {
 
 | Event | Payload | Ack sukses | Keterangan |
 |---|---|---|---|
+| `identity:hello` | `{ token?: string }` | `{ playerId, token }` | Handshake identitas stabil — lihat "Identity (akun stabil)" di bawah. Boleh dipanggil kapan saja, sebelum atau sesudah join room; opsional (server auto-fallback ke identitas anonim kalau tidak pernah dipanggil). |
 | `room:create` | `{ nickname: string, mode?: "casual" \| "standard", maxPlayers?: number, isPublic?: boolean }` | `{ code, playerId, view: LobbyView }` | Buat room baru, pemanggil jadi host. `mode` default `"casual"`. `"standard"` ditolak kalau chain belum dikonfigurasi di server (lihat §4 "Chain Reader" dan "Mode room & Loadout" di bawah). `maxPlayers` (2-5, default 5) dan `isPublic` (default `false` → privat, kode-saja) — lihat "Quick Match & Room Browser" di bawah. |
 | `room:join` | `{ code: string, nickname: string }` | `{ code, playerId, view: LobbyView }` | Gagal kalau room tidak ada, sudah `playing`/`finished`, atau penuh (`maxPlayers` room tsb, default 5). |
 | `room:leave` | `{}` | `{}` | Kalau match sedang `playing`, match otomatis di-abort (lihat `match:ended`). Room VS Bot (lihat `room:createBot`) langsung DIHAPUS begitu pemain keluar, phase apa pun. |
@@ -93,7 +94,7 @@ socket.emit("room:create", { nickname: "Alice" }, (res) => {
 | `room:state` | `LobbyView` | Broadcast ke semua socket di room setiap kali state lobby/draft berubah (join, start draft, submit board, wallet:link, loadout:set). `room:quick`/`room:createBot` yang MEMBUAT room baru sendirian TIDAK memicu broadcast ini (tidak ada orang lain untuk diberi tahu, sama seperti `room:create`) — hanya sisi yang benar-benar JOIN (termasuk `room:quick` yang menemukan room match) yang memicunya, sama seperti `room:join`. |
 | `match:state` | `MatchView` | Broadcast **per-viewer** (lihat di bawah) setiap kali ada `match:call`/`skill:use`/`skill:respond` sukses (termasuk giliran bot yang dijalankan otomatis), dan sekali saat room baru pindah ke `playing`. |
 | `match:ended` | `{ winnerId: string \| null, reason?: string }` | Match selesai — baik karena menang (`winnerId` terisi, termasuk menang lewat efek skill ATAU menang lewat giliran bot) maupun aborted karena pemain keluar/disconnect (`winnerId: null`, `reason: "player_left" \| "player_disconnected"`). |
-| `quest:completed` | `{ questId: string, title: string }` | Dikirim ke **socket milik pemain itu saja** (bukan broadcast room) setiap kali quest pemain itu baru saja selesai — termasuk quest bertipe `skill_used` dan quest bot ladder (`minBotLevel`, lihat "Quest bot ladder" di bawah). |
+| `quest:completed` | `{ questId: string, title: string }` | Dikirim ke **socket milik pemain itu saja** (bukan broadcast room) setiap kali quest pemain itu baru saja selesai — termasuk quest bertipe `skill_used` dan quest bot ladder (`minBotLevel`, lihat "Quest bot ladder" di bawah). Ditarget lewat `accountId` stabil (lihat "Identity" di atas) — transparan buat FE (socket yang sama tetap menerimanya), tapi ini artinya progress-nya sendiri kini konsisten lintas match/reconnect, bukan reset tiap match seperti sebelumnya. |
 | `skill:pending` | `{ playerId: string, effectType: string, awaiting: string[] }` | Broadcast ke room saat sebuah skill use membuka window Nullify (sekali, saat window terbuka — lihat "Skill in-match" di bawah). |
 | `skill:resolved` | `{ playerId: string, effectType: string, nullified: boolean, nullifiedBy?: string }` | Broadcast ke room saat skill yang pending selesai — dibatalkan (`nullified: true`, `nullifiedBy` terisi) atau berhasil (`nullified: false`), termasuk saat window 15 detik habis tanpa jawaban. |
 | `plaza:message` | `PlazaMessage` | Broadcast ke **SEMUA socket yang connect** (`io.emit`, bukan cuma satu room) setiap kali `plaza:send` sukses — termasuk ke pengirim sendiri. Lihat "Plaza chat" di bawah. |
@@ -162,6 +163,70 @@ milik viewer sendiri. `pendingSkill` publik (siapa pakai skill apa, siapa
 masih perlu jawab) tapi TIDAK PERNAH menyertakan `args` skill itu (mis.
 `cellIndex` Wild Daub) — itu sudah cukup untuk render banner "opponent used
 X, respond?" tanpa membocorkan detail board.
+
+### Identity (akun stabil)
+
+**Masalah yang dipecahkan**: sebelumnya `playerId` yang dikembalikan
+`room:create`/`room:join`/dll di-generate `randomUUID()` baru SETIAP kali —
+kalau progress quest atau skor di-key pakai `playerId` itu, progress
+praktis reset tiap match/reconnect. `identity:hello` memberi setiap pemain
+sebuah **`accountId` stabil** (di dokumen ini juga disebut `playerId` di
+dalam payload `identity:hello`-nya sendiri — lihat catatan penamaan di
+bawah) yang bertahan lintas match, lintas room, bahkan lintas reconnect,
+selama client menyimpan `token`-nya.
+
+```ts
+socket.emit("identity:hello", { token: savedToken }, (res) => {
+  if (!res.ok) return;
+  const { playerId: accountId, token } = res;
+  localStorage.setItem("thebingofi_token", token); // simpan untuk sesi berikutnya
+});
+```
+
+- **Pertama kali** (tidak ada `token` tersimpan) → kirim `identity:hello({})`.
+  Server membuat akun baru (`id = randomUUID()`), membuat `token` acak
+  (32 byte, hex), menyimpan **HANYA hash-nya** (`sha256`), dan membalas
+  `{ playerId, token }` — `playerId` di sini adalah `accountId` yang stabil,
+  `token` adalah kredensial mentah (satu-satunya saat client melihatnya
+  dalam bentuk utuh — server tidak pernah menyimpan/mengembalikan
+  plaintext-nya lagi setelah ini).
+- **Kunjungan berikutnya** → simpan `token` (mis. `localStorage`), kirim
+  `identity:hello({ token })` saat connect. Kalau hash-nya cocok dengan
+  yang tersimpan, server membalas `playerId` YANG SAMA + `token` YANG SAMA
+  (tidak pernah di-rotate) dan meng-update `last_seen_at`.
+- **Token asing/tidak dikenal** (hilang, salah, atau memang belum pernah
+  diterbitkan) → BUKAN error, server langsung membuat identitas baru
+  seperti kunjungan pertama.
+- **Guest yang tidak pernah memanggil `identity:hello` sama sekali** — flow
+  lama tetap jalan tanpa perubahan apa pun di sisi client: server otomatis
+  membuat identitas anonim "ephemeral" pertama kali dibutuhkan (saat
+  `room:create`/`room:join`/`room:quick`/`room:createBot` atau
+  `wallet:link` pertama pada socket itu). "Ephemeral" di sini berarti
+  client tidak pernah diberi tahu token-nya, jadi identitas itu tidak bisa
+  di-resume setelah reconnect (setiap reconnect = akun anonim baru lagi) —
+  TAPI selama socket itu tetap terhubung, quest progress/dsb tetap
+  konsisten terhadap SATU akun yang sama sepanjang sesi itu, bukan reset
+  tiap kali ganti room/match seperti sebelumnya.
+
+**Penamaan `playerId` yang membingungkan (disengaja, ikuti apa adanya)**:
+field `playerId` di ack `identity:hello` (accountId, stabil lintas
+match/room) BUKAN field `playerId` yang sama yang dikembalikan
+`room:create`/`room:join`/`room:quick`/`room:createBot` (tetap seperti
+sekarang: id kursi ephemeral per-room, dipakai untuk giliran & redaksi
+board — lihat `LobbyView`/`MatchView` di atas, semantiknya TIDAK berubah).
+Kedua id ini hidup berdampingan; FE harus menyimpan keduanya secara
+terpisah — `accountId` dari `identity:hello` untuk quest/leaderboard,
+`playerId` per-room untuk semua interaksi in-match seperti biasa.
+
+**Wallet link sekarang menyimpan wallet ke akun**: `wallet:link` (lihat di
+bawah) sekarang, di ATAS perilaku lama (menempel wallet ke `RoomPlayer`
+kalau sedang dalam room), juga menyimpan wallet ke row akun stabil
+(`players.wallet`, unique). Kalau wallet itu sudah terpaut ke akun LAIN →
+`wallet:link` ditolak (`ok: false`, pesan menyebut "wallet"/"account") —
+satu wallet cuma boleh terpaut ke satu akun. Me-link wallet yang SAMA ke
+akun yang SAMA lagi tetap sukses (idempotent). `wallet:link` boleh dipanggil
+sebelum `identity:hello` — kalau begitu, server membuat akun (ephemeral,
+lihat di atas) untuk socket itu dulu sebelum menautkan walletnya.
 
 ### Flow lengkap: create → join → draft → main → selesai
 
@@ -578,12 +643,20 @@ curl "http://localhost:3001/daily/today?date=2026-08-01"
 Body:
 
 ```json
-{ "nickname": "Alice", "board": [1,2,3,...25 angka unik 1-25...], "date": "2026-08-01" }
+{ "nickname": "Alice", "board": [1,2,3,...25 angka unik 1-25...], "date": "2026-08-01", "accountId": "..." }
 ```
 
 `date` opsional (default hari ini). Board disimulasikan lawan urutan
 panggilan deterministik hari itu, berhenti begitu 5 garis selesai. Skor juga
 otomatis disubmit ke leaderboard harian tanggal tsb.
+
+`accountId` **opsional** — `accountId` (a.k.a. `playerId` dari ack
+`identity:hello`, lihat "Identity (akun stabil)" di atas) SATU-SATUNYA cara
+endpoint HTTP ini tahu siapa yang main, karena request HTTP tidak punya
+socket/session. Guest play tetap 100% jalan tanpa field ini (CLAUDE.md) —
+efeknya cuma ke leaderboard: lihat "Persistence" (§5) di bawah untuk
+penjelasan lengkap kenapa mengirim `accountId` penting untuk deduplikasi
+skor per akun di mode Postgres.
 
 ```bash
 curl -X POST http://localhost:3001/daily/play \
@@ -646,12 +719,20 @@ CONCEPT.md: "level tertinggi yang terkalahkan jadi badge profil").
 
 ### `GET /quests/progress/:playerId`
 
-Progress quest pemain tsb (`QuestProgress[]`) — store yang SAMA dipakai
+**Perubahan makna (penting untuk FE)**: `:playerId` di sini SEKARANG berarti
+`accountId` — `playerId` dari ack `identity:hello` (lihat "Identity (akun
+stabil)" di atas), BUKAN `playerId` ephemeral yang dikembalikan
+`room:create`/`room:join`/dll. Nama parameter di URL sengaja tidak diganti
+(backward-compatible di level rute), tapi nilainya harus `accountId` supaya
+progress yang dikembalikan benar-benar konsisten lintas match — kirim
+`accountId` hasil `identity:hello`, bukan `playerId` per-room.
+
+Progress quest akun tsb (`QuestProgress[]`) — store yang SAMA dipakai
 realtime layer (satu sumber kebenaran, lihat `server/src/api/questStore.ts`),
 jadi progress yang bertambah lewat match otomatis kelihatan di sini.
 
 ```bash
-curl http://localhost:3001/quests/progress/<playerId>
+curl http://localhost:3001/quests/progress/<accountId>
 ```
 
 ```json
@@ -722,6 +803,7 @@ curl http://localhost:3001/metadata/999.json    # -> 404 { "ok": false, "error":
 | `REGISTRY_ADDRESS` | chain reader | zero address, fallback ke `contracts/deployments/91342.json` |
 | `COLLECTION_ADDRESS` | chain reader | zero address, fallback ke `contracts/deployments/91342.json` |
 | `MARKETPLACE_ADDRESS` | chain reader | zero address |
+| `DATABASE_URL` | `server/src/db/pool.ts` | kosong → mode in-memory (lihat §5 "Persistence" di bawah) |
 
 Server realtime + HTTP API TIDAK butuh env apa pun untuk jalan (guest play,
 tanpa wallet, room `mode: "casual"`, Plaza chat). Env chain hanya relevan
@@ -730,7 +812,10 @@ bagian 4 & "Mode room & Loadout" di atas). Karena kontrak SUDAH live di
 GIWA Sepolia (`contracts/deployments/91342.json` — lihat CLAUDE.md), mode
 `"standard"` dan endpoint metadata jalan bahkan tanpa env var sama sekali
 di fresh checkout manapun; env var hanya perlu diisi untuk override (mis.
-target chain lain / alamat baru).
+target chain lain / alamat baru). `DATABASE_URL` sama: server jalan penuh
+tanpanya (mode in-memory, perilaku identik dengan sebelum task persistence
+ini) — isi hanya kalau mau progress/leaderboard/plaza sungguhan bertahan
+lintas restart, lihat §5.
 
 ---
 
@@ -807,3 +892,104 @@ Test: `server/src/chain/reader.test.ts` (unit, `node --test` biasa) +
 RPC sungguhan) + `server/src/chain/chain.integration.test.ts` (opsional,
 spawn anvil + forge beneran — jalankan lewat `pnpm test:chain`, di-skip
 kalau `RUN_CHAIN_TESTS` bukan `1`).
+
+---
+
+## 5. Persistence (Postgres, opsional)
+
+Prinsip: identitas dulu, baru persistence (lihat "Identity (akun stabil)" di
+§1) — tanpa `accountId` yang stabil, menyimpan progress/skor ke database
+cuma memindahkan sampah dari RAM ke disk. Layer ini murni tambahan: server
+jalan 100% tanpa Postgres sama sekali (mode in-memory, perilaku identik
+dengan sebelum task ini — semua test lama lolos tanpa `DATABASE_URL`).
+
+### Apa yang PERSIST (kalau `DATABASE_URL` diisi) vs TIDAK
+
+| Data | Persist? | Tabel/tempat |
+|---|---|---|
+| Akun (identity, wallet link) | Ya | `players` |
+| Progress quest | Ya | `quest_progress` |
+| Skor Daily Challenge | Ya | `daily_scores` |
+| Riwayat Plaza chat | Ya | `plaza_messages` |
+| Room & match yang sedang berjalan | **TIDAK** | in-memory saja, lihat di bawah |
+| Rate limit Plaza (per socket) | **TIDAK** | in-memory saja, disengaja (lihat `plaza/plaza.ts`) |
+| Wallet nonce (`wallet:nonce`) | **TIDAK** | in-memory per socket, umurnya cuma ~5 menit |
+
+**Room/match TETAP in-memory, disengaja** (lihat komentar `// ponytail:` di
+`server/src/realtime/rooms.ts`): satu match berdurasi menit dan terikat ke
+koneksi socket yang hidup — tidak ada cerita "resume" untuk sebuah room
+Socket.IO setelah server restart, karena semua client toh harus
+reconnect+re-auth dari awal juga. Konsekuensinya: **restart server saat ada
+match berjalan = match itu hilang** (sama seperti sebelum task ini — pemain
+yang disconnect di tengah match pun sudah diperlakukan sebagai match
+aborted, lihat `rooms.ts`'s `exitRoom`). Yang tetap aman lintas restart:
+`accountId` tiap pemain, progress quest-nya, entri leaderboard hariannya,
+dan riwayat Plaza — cuma state in-match yang hilang.
+
+### Cara kerja: pilih backend otomatis, tanpa ORM
+
+- `server/src/db/pool.ts` — baca `DATABASE_URL` sekali saat modul di-import;
+  kosong/tidak ada → `pool` bernilai `undefined` (mode in-memory). SSL:
+  dideteksi sederhana dari hostname — `localhost`/`127.0.0.1`/
+  `*.railway.internal` (jaringan privat Railway) → tanpa SSL; host lain
+  (mis. endpoint publik managed Postgres) → `ssl: { rejectUnauthorized:
+  false }`.
+- `server/src/db/schema.sql` + `migrate.ts` — `CREATE TABLE IF NOT EXISTS`
+  + index, dijalankan sekali saat boot (`index.ts`, kalau `pool` ada).
+  Idempoten, tanpa framework migrasi (4 tabel, SQL langsung sudah cukup).
+- Empat store (`identity/identity.ts`, `api/questStore.ts`,
+  `api/dailyLeaderboard.ts`, `plaza/plaza.ts`) masing-masing punya DUA
+  implementasi async di balik satu interface (`create*Store(pool?)`),
+  dipilih otomatis dari ada/tidaknya `pool` — in-memory kalau tidak ada
+  (perilaku persis seperti sebelum task ini), Postgres kalau ada.
+  Rate-limit Plaza TETAP in-memory di kedua mode (lihat tabel di atas).
+- Dependency: HANYA [`pg`](https://node-postgres.com/) (node-postgres) —
+  tanpa ORM/query builder (Prisma/Drizzle/Knex).
+
+### Skema tabel
+
+```sql
+players (id uuid PK, token_hash text UNIQUE NOT NULL, nickname text,
+         wallet text UNIQUE, created_at, last_seen_at)
+quest_progress (player_id uuid REFERENCES players(id), quest_id text,
+                 period_key text, count int, completed bool,
+                 PRIMARY KEY (player_id, quest_id, period_key))
+daily_scores (date text, player_id uuid, nickname text, score int,
+              calls_to_bingo int, PRIMARY KEY (date, player_id))
+plaza_messages (id uuid PK, player_id uuid NULL, nickname text, text text,
+                 skill_id int NULL, created_at timestamptz,
+                 index (created_at DESC))
+```
+
+Detail lengkap + komentar ada di `server/src/db/schema.sql`. Catatan
+penting per tabel:
+
+- `quest_progress.player_id` **mereferensikan** `players(id)` — progress
+  hanya pernah dicatat untuk akun yang benar-benar ada (lihat "Identity" di
+  §1: identitas anonim otomatis pun tetap membuat row `players` asli,
+  cuma token-nya tidak pernah dikirim ke client — jadi FK ini selalu valid).
+- `daily_scores.player_id` **TIDAK** direferensikan ke `players` — `POST
+  /daily/play` tanpa `accountId` (guest HTTP) mendapat uuid acak baru
+  SETIAP submisi (tidak pernah di-dedupe terhadap dirinya sendiri di mode
+  Postgres — beda dari mode in-memory yang masih dedupe per-nickname persis
+  seperti sebelumnya, lihat komentar di `dailyLeaderboard.ts`). Kirim
+  `accountId` dari `identity:hello` kalau mau skor terbaikmu benar-benar
+  ke-track lintas hari.
+- `plaza_messages.player_id` nullable, TANPA FK — Plaza tidak pernah
+  memaksa pembuatan identitas hanya untuk chat (guest play tetap penuh,
+  CLAUDE.md); `player_id` cuma terisi kalau socket itu KEBETULAN sudah
+  punya `accountId` saat mengirim (dari `identity:hello` atau sudah pernah
+  join room sebelumnya di sesi yang sama).
+
+### Test Postgres (opt-in)
+
+Semua test lama (`pnpm test`, `node --test`) lolos TANPA `DATABASE_URL` —
+itu wajib, bukan opsional. Test yang benar-benar menyentuh Postgres ada di
+`server/src/db/db.test.ts`, di-skip secara default, jalan hanya kalau
+`RUN_DB_TESTS=1` DAN `DATABASE_URL` menunjuk ke database kosong/scratch
+(tabelnya di-`TRUNCATE` tiap test — jangan arahkan ke database produksi):
+
+```bash
+RUN_DB_TESTS=1 DATABASE_URL=postgres://user@localhost:5432/thebingofi_test \
+  pnpm test:db
+```

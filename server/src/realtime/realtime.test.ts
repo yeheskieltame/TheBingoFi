@@ -15,6 +15,7 @@ import type { AddressInfo } from "node:net";
 import { io as ioClient, type Socket as ClientSocket } from "socket.io-client";
 import { generatePrivateKey, privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 
+import { getProgress } from "../api/questStore.ts";
 import { BOARD_SIZE, NULLIFY, WILD_DAUB, type SkillInstance } from "../engine/index.ts";
 import { exampleQuests } from "../quest/index.ts";
 import { createRealtimeServer, type LoadoutVerifier, type RealtimeServerOptions } from "./server.ts";
@@ -564,6 +565,157 @@ test("the winner receives quest:completed for the daily win-1-match quest", asyn
   const winQuestPayload = questsCompleted.find((q) => q.questId === dailyWinQuest!.id);
   assert.ok(winQuestPayload, `expected a quest:completed for ${dailyWinQuest!.id}, got: ${JSON.stringify(questsCompleted)}`);
   assert.equal(winQuestPayload.title, dailyWinQuest!.title);
+});
+
+// -- identity (server/API.md's "Identity" section) -------------------------
+//
+// identity:hello establishes a STABLE accountId (../identity/identity.ts),
+// distinct from the ephemeral per-room playerId room:create/join/etc.
+// return. These tests exercise the handshake itself directly; the big
+// regression test below ("quest progress accumulates across separate
+// matches...") proves the actual bug this fixes.
+
+test("identity:hello with no token creates a new identity; reusing the returned token resolves to the SAME playerId and the SAME token", async () => {
+  const socket = await connectClient();
+
+  const first = await emit(socket, "identity:hello", {});
+  assert.equal(first.ok, true, `expected success, got: ${JSON.stringify(first)}`);
+  if (!first.ok) throw new Error("unreachable");
+  const playerId = first.playerId as string;
+  const token = first.token as string;
+  assert.equal(typeof playerId, "string");
+  assert.equal(typeof token, "string");
+  assert.ok(token.length >= 32, "token should be a substantial random string, not something guessable");
+
+  const second = await emit(socket, "identity:hello", { token });
+  assert.equal(second.ok, true);
+  if (!second.ok) throw new Error("unreachable");
+  assert.equal(second.playerId, playerId, "reusing the token must resolve to the same account");
+  assert.equal(second.token, token, "the token must never rotate on reuse");
+});
+
+test("identity:hello with an unknown/foreign token creates a brand-new identity rather than failing", async () => {
+  const socket = await connectClient();
+  const res = await emit(socket, "identity:hello", { token: "not-a-real-token-ever-issued-by-anyone" });
+  assert.equal(res.ok, true);
+  if (!res.ok) throw new Error("unreachable");
+  assert.equal(typeof res.playerId, "string");
+  assert.ok((res.playerId as string).length > 0);
+});
+
+test("identity persists across a full reconnect: a fresh socket presenting the saved token resolves to the same playerId", async () => {
+  const first = await connectClient();
+  const helloRes = await emit(first, "identity:hello", {});
+  assert.equal(helloRes.ok, true);
+  if (!helloRes.ok) throw new Error("unreachable");
+  const playerId = helloRes.playerId as string;
+  const token = helloRes.token as string;
+  first.disconnect();
+
+  const second = await connectClient();
+  const rehello = await emit(second, "identity:hello", { token });
+  assert.equal(rehello.ok, true);
+  if (!rehello.ok) throw new Error("unreachable");
+  assert.equal(rehello.playerId, playerId);
+});
+
+test("wallet:link rejects a wallet already linked to a DIFFERENT account (satu wallet = satu akun) - neither socket ever called identity:hello, proving the automatic anonymous fallback also participates in the same uniqueness rule", async () => {
+  const a = await connectClient();
+  const b = await connectClient();
+  const account = privateKeyToAccount(generatePrivateKey());
+
+  const linkA = await linkWallet(a, account);
+  assert.equal(linkA.ok, true, `expected first link to succeed: ${JSON.stringify(linkA)}`);
+
+  const linkB = await linkWallet(b, account);
+  assert.equal(linkB.ok, false);
+  if (linkB.ok) throw new Error("unreachable");
+  assert.match(linkB.error, /wallet|account/i);
+});
+
+test("quest progress accumulates across separate matches for the SAME identified account, even across a full disconnect/reconnect - the bug this task fixes", async () => {
+  // Regression test for the exact problem described in CLAUDE.md/this
+  // task's spec: rooms.ts hands out a brand-new randomUUID() playerId on
+  // every room:create/join, so keying quest progress on THAT id used to
+  // reset progress every match. Now progress is keyed on the stable
+  // accountId (../identity/identity.ts) - this drives 2 FULL matches as the
+  // SAME identity (reconnecting in between, to prove it survives that too)
+  // and checks daily_play_3_matches' count reaches 2, not 1-then-reset-to-1.
+  const playThreeMatchesQuest = exampleQuests.find((q) => q.id === "daily_play_3_matches");
+  assert.ok(playThreeMatchesQuest, "exampleQuests must define daily_play_3_matches");
+
+  async function playOneMatchAsHost(host: ClientSocket): Promise<void> {
+    const guest = await connectClient();
+
+    const created = await emit(host, "room:create", { nickname: "Host" });
+    assert.equal(created.ok, true);
+    if (!created.ok) throw new Error("unreachable");
+    const code = created.code as string;
+
+    const joined = await emit(guest, "room:join", { code, nickname: "Guest" });
+    assert.equal(joined.ok, true);
+
+    const started = await emit(host, "draft:start", {});
+    assert.equal(started.ok, true);
+
+    const hostFirstMatchStatePromise = waitForEvent<Record<string, unknown>>(host, "match:state");
+    const guestFirstMatchStatePromise = waitForEvent<Record<string, unknown>>(guest, "match:state");
+    const hostSubmit = await emit(host, "draft:submit", { numbers: identityBoard() });
+    assert.equal(hostSubmit.ok, true);
+    const guestSubmit = await emit(guest, "draft:submit", { numbers: shiftedBoard() });
+    assert.equal(guestSubmit.ok, true);
+    await Promise.all([hostFirstMatchStatePromise, guestFirstMatchStatePromise]);
+
+    for (let n = 1; n <= 20; n++) {
+      const caller = n % 2 === 1 ? host : guest;
+      const result = await emit(caller, "match:call", { number: n });
+      assert.equal(result.ok, true, `call ${n} should succeed`);
+    }
+
+    const matchEnded = waitForEvent(host, "match:ended");
+    const finalCall = await emit(host, "match:call", { number: 21 });
+    assert.equal(finalCall.ok, true);
+    await matchEnded;
+  }
+
+  // Match 1: a freshly-connected socket establishes its identity first via
+  // identity:hello, then plays as host.
+  const hostSocket1 = await connectClient();
+  const hello = await emit(hostSocket1, "identity:hello", {});
+  assert.equal(hello.ok, true);
+  if (!hello.ok) throw new Error("unreachable");
+  const accountId = hello.playerId as string;
+  const token = hello.token as string;
+
+  await playOneMatchAsHost(hostSocket1);
+
+  const progressAfterMatch1 = await getProgress(accountId);
+  const entryAfterMatch1 = progressAfterMatch1.find(
+    (p) => p.questId === playThreeMatchesQuest!.id && p.periodKey === new Date().toISOString().slice(0, 10),
+  );
+  assert.ok(entryAfterMatch1, "expected progress on daily_play_3_matches after 1 match");
+  assert.equal(entryAfterMatch1!.count, 1);
+
+  // Full disconnect + reconnect with a BRAND NEW socket, resuming the SAME
+  // identity via the saved token - this is the part that used to be
+  // impossible: the old ephemeral-playerId-as-quest-key design had no way
+  // to recognize "this is the same player" across a reconnect at all.
+  hostSocket1.disconnect();
+  const hostSocket2 = await connectClient();
+  const rehello = await emit(hostSocket2, "identity:hello", { token });
+  assert.equal(rehello.ok, true);
+  if (!rehello.ok) throw new Error("unreachable");
+  assert.equal(rehello.playerId, accountId, "reconnecting with the saved token must resume the same account");
+
+  await playOneMatchAsHost(hostSocket2);
+
+  const progressAfterMatch2 = await getProgress(accountId);
+  const entryAfterMatch2 = progressAfterMatch2.find(
+    (p) => p.questId === playThreeMatchesQuest!.id && p.periodKey === new Date().toISOString().slice(0, 10),
+  );
+  assert.ok(entryAfterMatch2, "expected progress on daily_play_3_matches after 2 matches");
+  assert.equal(entryAfterMatch2!.count, 2, "progress must ACCUMULATE across matches/reconnects, not reset");
+  assert.equal(entryAfterMatch2!.completed, false, "target is 3 - not yet completed after 2 matches");
 });
 
 // -- wallet link ----------------------------------------------------------

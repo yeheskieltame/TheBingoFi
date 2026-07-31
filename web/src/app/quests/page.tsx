@@ -8,7 +8,7 @@ import { strings } from "@/i18n/strings";
 export default function QuestsPage() {
   const locale = useLocale();
   const t = strings[locale].quests;
-  const { quests, progress, playerId, error } = useQuests();
+  const { quests, progress, accountId, error } = useQuests();
 
   return (
     <main className="mx-auto max-w-2xl py-8">
@@ -61,7 +61,7 @@ export default function QuestsPage() {
               {t.warning.split(".")[0]}.
               <span className="text-amber-300"> {t.warning.split(".").slice(1).join(".").trim()}</span>
             </p>
-            {!playerId && <p className="text-xs text-ice/50">{t.noPlayerYet}</p>}
+            {!accountId && <p className="text-xs text-ice/50">{t.noPlayerYet}</p>}
           </footer>
         </div>
       </section>

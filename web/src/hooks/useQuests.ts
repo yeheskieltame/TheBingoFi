@@ -3,19 +3,26 @@
 import { useEffect, useState } from "react";
 
 import { getQuestProgress, getQuests, type QuestDef, type QuestProgress } from "@/lib/api";
-import { useStoredPlayerId } from "@/hooks/useStoredPlayerId";
+import { useStoredAccountId } from "@/hooks/useStoredAccountId";
 
 /**
- * Loads the quest catalog (GET /quests) and, if a playerId was stored from
- * a previous /play session (see lib/storage.ts, set on room create/join),
- * that player's progress (GET /quests/progress/:playerId) - server/API.md
- * section 2.
+ * Loads the quest catalog (GET /quests) and, if a stable accountId was
+ * stored from a prior `identity:hello` handshake (see lib/identity.ts's
+ * `ensureIdentity`, run from hooks/useRoom.ts before room actions and
+ * hooks/usePlaza.ts on connect), that account's progress (GET
+ * /quests/progress/:playerId - the URL segment is still literally named
+ * `:playerId` server-side but now MEANS accountId, see server/API.md's
+ * "Identity (akun stabil)" section) - server/API.md section 2.
+ *
+ * No accountId yet (never connected a socket this browser) is a normal,
+ * non-error state: `quests` still loads and `progress` just stays `null`,
+ * which QuestList already renders as "no progress yet" for every quest.
  */
 export function useQuests() {
   const [quests, setQuests] = useState<readonly QuestDef[] | null>(null);
   const [progress, setProgress] = useState<readonly QuestProgress[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const playerId = useStoredPlayerId();
+  const accountId = useStoredAccountId();
 
   useEffect(() => {
     (async () => {
@@ -26,13 +33,13 @@ export function useQuests() {
   }, []);
 
   useEffect(() => {
-    if (!playerId) return;
+    if (!accountId) return;
     (async () => {
-      const res = await getQuestProgress(playerId);
+      const res = await getQuestProgress(accountId);
       if (res.ok) setProgress(res.data);
       else setError(res.error);
     })();
-  }, [playerId]);
+  }, [accountId]);
 
-  return { quests, progress, playerId, error };
+  return { quests, progress, accountId, error };
 }

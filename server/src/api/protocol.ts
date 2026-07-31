@@ -47,6 +47,17 @@ export type EmptyAckData = Record<never, never>;
 
 // -- client -> server payloads ---------------------------------------------
 
+/**
+ * Identity handshake (see server/API.md's "Identity" section): `token`,
+ * if the client has one saved from a previous `identity:hello`, proves it
+ * still owns that account - omit it (or pass an unrecognized one) to start
+ * a brand-new anonymous account. Safe to call at any point, any number of
+ * times, before or after joining a room.
+ */
+export interface IdentityHelloPayload {
+  readonly token?: string;
+}
+
 export interface RoomCreatePayload {
   readonly nickname: string;
   /**
@@ -165,6 +176,20 @@ export interface PlazaSendPayload {
 
 // -- client -> server ack data ----------------------------------------------
 
+/**
+ * `playerId` here is the STABLE accountId (../identity/identity.ts) - NOT
+ * the ephemeral per-room seat id `room:create`/`room:join` return under the
+ * same field name (realtime/rooms.ts's RoomPlayer.playerId). Save `token`
+ * (e.g. localStorage) and pass it back on the next `identity:hello` to
+ * resume the same account - see server/API.md's "Identity" section. The
+ * server never rotates a token that's still valid: reusing it always
+ * returns the same `playerId` and the same `token` back.
+ */
+export interface IdentityHelloAckData {
+  readonly playerId: string;
+  readonly token: string;
+}
+
 export interface RoomJoinedAckData {
   readonly code: string;
   readonly playerId: string;
@@ -206,6 +231,8 @@ export interface PlazaHistoryAckData {
 }
 
 export interface ClientToServerEvents {
+  /** Identity handshake - resume a saved account via `token`, or start a fresh anonymous one. See IdentityHelloPayload/IdentityHelloAckData and server/API.md's "Identity" section. */
+  "identity:hello": (payload: IdentityHelloPayload, ack: Ack<IdentityHelloAckData>) => void;
   "room:create": (payload: RoomCreatePayload, ack: Ack<RoomJoinedAckData>) => void;
   "room:join": (payload: RoomJoinPayload, ack: Ack<RoomJoinedAckData>) => void;
   "room:leave": (payload: EmptyAckData, ack: Ack<EmptyAckData>) => void;

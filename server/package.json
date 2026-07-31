@@ -16,15 +16,18 @@
     "start": "node src/index.ts",
     "test": "node --test",
     "test:chain": "RUN_CHAIN_TESTS=1 node --test src/chain/chain.integration.test.ts",
+    "test:db": "RUN_DB_TESTS=1 node --test src/db/db.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "pg": "^8.22.0",
     "socket.io": "^4.8.3",
     "viem": "^2.55.10"
   },
   "devDependencies": {
-    "typescript": "^5",
     "@types/node": "^25",
-    "socket.io-client": "^4.8.3"
+    "@types/pg": "^8.20.0",
+    "socket.io-client": "^4.8.3",
+    "typescript": "^5"
   }
 }

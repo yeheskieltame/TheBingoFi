@@ -17,6 +17,8 @@ import { createHttpHandler } from "./api/http.ts";
 import { createChainClient, loadChainConfig } from "./chain/config.ts";
 import { createDefaultLoadoutVerifier, createDefaultSkillMetadataReader } from "./chain/defaultVerifier.ts";
 import { getCatalog, type SkillDef } from "./chain/reader.ts";
+import { migrate } from "./db/migrate.ts";
+import { pool } from "./db/pool.ts";
 import type { SkillInstance } from "./engine/index.ts";
 import { createRealtimeServer } from "./realtime/server.ts";
 
@@ -92,6 +94,12 @@ function createDefaultLoadoutResolver(
 
 // Boot hanya saat dijalankan langsung (node src/index.ts), bukan saat di-import sebagai lib.
 if (import.meta.main) {
+  // Idempotent (CREATE TABLE IF NOT EXISTS) - no-op when DATABASE_URL is
+  // unset (pool undefined, see db/pool.ts) - see db/migrate.ts. Awaited
+  // before the server starts accepting connections so no request ever
+  // races a missing table.
+  await migrate(pool);
+
   const PORT = Number(process.env.PORT ?? 3001);
   // DI wiring: the HTTP layer never builds a viem client itself (see
   // api/http.ts's HttpHandlerOptions) - this resolves the real

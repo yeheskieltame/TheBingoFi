@@ -56,6 +56,17 @@ export interface DailyPlayPayload {
   readonly nickname: string;
   readonly board: readonly number[];
   readonly date?: string;
+  /**
+   * Stable accountId from a prior `identity:hello` handshake (see
+   * lib/identity.ts's `ensureIdentity`) - optional, guest play works fully
+   * without it (CLAUDE.md). Not part of `@thebingofi/server/protocol`
+   * (server/src/api/http.ts validates the request body inline, with no
+   * exported request type to import), so it's declared here directly rather
+   * than duplicating a type that doesn't exist. See server/API.md's
+   * "POST /daily/play" section - sending this dedupes leaderboard scores
+   * per account instead of per nickname in Postgres mode.
+   */
+  readonly accountId?: string;
 }
 
 export function postDailyPlay(payload: DailyPlayPayload): Promise<ApiResult<DailyPlayResponse>> {

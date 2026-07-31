@@ -10,6 +10,7 @@ import {
   type DailyPlayResult,
   type DailyToday,
 } from "@/lib/api";
+import { getStoredAccountId } from "@/lib/storage";
 
 /**
  * Loads today's Daily Challenge (GET /daily/today) and its leaderboard
@@ -17,6 +18,14 @@ import {
  * board (POST /daily/play) - see server/API.md section 2. Fetch/state logic
  * only; the page composes this with hooks/useDraftBoard.ts + dumb
  * components.
+ *
+ * `play` sends the stored accountId (lib/storage.ts), if one exists, so the
+ * leaderboard score dedupes per account rather than per nickname (server/
+ * API.md's "POST /daily/play" section). This reads localStorage directly
+ * rather than going through lib/identity.ts's `ensureIdentity` - /daily
+ * doesn't necessarily ever open a socket, and it shouldn't have to just to
+ * play the daily challenge; an accountId is used opportunistically if one
+ * was already established elsewhere (e.g. a prior /play or /plaza visit).
  */
 export function useDailyChallenge() {
   const [today, setToday] = useState<DailyToday | null>(null);
@@ -51,7 +60,8 @@ export function useDailyChallenge() {
     async (nickname: string, board: readonly number[]) => {
       setPending(true);
       setError(null);
-      const res = await postDailyPlay({ nickname, board });
+      const accountId = getStoredAccountId() ?? undefined;
+      const res = await postDailyPlay({ nickname, board, accountId });
       setPending(false);
       if (!res.ok) {
         setError(res.error);

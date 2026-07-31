@@ -23,6 +23,8 @@ import type {
   ClientToServerEvents,
   DraftSubmitPayload,
   EmptyAckData,
+  IdentityHelloAckData,
+  IdentityHelloPayload,
   LoadoutSetPayload,
   LobbyAckData,
   MatchCallAckData,
@@ -46,6 +48,7 @@ import type {
 import { recordEvent } from "../api/questStore.ts";
 import { MAX_BOT_LEVEL, MIN_BOT_LEVEL, pickCall } from "../bot/bot.ts";
 import { MIN_PLAYERS, type MatchState, type PendingSkill, type SkillArgs, type SkillInstance } from "../engine/index.ts";
+import { createIdentityStore, type IdentityStore } from "../identity/identity.ts";
 import { createPlazaStore } from "../plaza/plaza.ts";
 import { eventsFromCall, type GameEvent } from "../quest/events.ts";
 import {
@@ -124,6 +127,17 @@ export interface RealtimeServerOptions {
    * without waiting in real time.
    */
   readonly botDelayMs?: number;
+  /**
+   * Stable player identity store (see ../identity/identity.ts) backing
+   * `identity:hello` and every place a persisted, cross-match identity is
+   * needed (room:create/join/quick/createBot, wallet:link - see
+   * server/API.md's "Identity" section). Defaults to
+   * `createIdentityStore()` (in-memory, or Postgres if `DATABASE_URL` is
+   * set - see ../db/pool.ts) when absent - unlike `verifyLoadout`, this is
+   * never "disabled", just picks its backend automatically. Overridable for
+   * tests that need a specific store instance shared across assertions.
+   */
+  readonly identity?: IdentityStore;
 }
 
 // -- wire types ---------------------------------------------------------
@@ -148,6 +162,17 @@ interface SocketData {
   walletAddress?: string;
   /** Last-issued, not-yet-consumed nonce for this socket - see wallet:nonce/wallet:link. */
   walletNonce?: PendingWalletNonce;
+  /**
+   * Stable account id (../identity/identity.ts) - set on the FIRST
+   * identity:hello call, OR lazily by ensureAccountId the first time some
+   * other handler needs one (room:create/join/quick/createBot,
+   * wallet:link) for a socket that never called identity:hello explicitly
+   * ("guest lama/edge case" - see server/API.md's "Identity" section).
+   * Unlike roomCode/playerId, this is NOT cleared on room:leave/disconnect
+   * from a room - it's tied to the socket's connection lifetime, not room
+   * membership.
+   */
+  accountId?: string;
 }
 
 type RealtimeServer = Server<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
@@ -328,6 +353,27 @@ function playerChannel(playerId: string): string {
   return `player:${playerId}`;
 }
 
+/** Delivery channel for a stable accountId (../identity/identity.ts) - quest:completed is targeted here (see emitQuestEvent), NOT playerChannel, since the ephemeral per-room playerId resets every match. */
+function accountChannel(accountId: string): string {
+  return `account:${accountId}`;
+}
+
+/**
+ * Resolves this socket's stable accountId, creating one via `identity`'s
+ * anonymous-hello path the first time it's needed if the client never
+ * called identity:hello explicitly - see SocketData.accountId's doc and
+ * server/API.md's "Identity" section ("guest lama/edge case"). Joins the
+ * socket to its account channel (see accountChannel) exactly once, the
+ * first time an accountId is established for it.
+ */
+async function ensureAccountId(socket: RealtimeSocket, identity: IdentityStore): Promise<string> {
+  if (socket.data.accountId) return socket.data.accountId;
+  const { playerId } = await identity.hello();
+  socket.data.accountId = playerId;
+  socket.join(accountChannel(playerId));
+  return playerId;
+}
+
 function joinSocketToRoom(socket: RealtimeSocket, code: string, playerId: string): void {
   socket.data.roomCode = code;
   socket.data.playerId = playerId;
@@ -392,18 +438,27 @@ function applyExitResult(
 //
 // Progress itself lives in ../api/questStore.ts, shared with the HTTP API's
 // GET /quests/progress/:playerId - this is just the realtime-side glue that
-// turns a match transition into events and broadcasts newly-completed quests.
+// turns a match transition into events and broadcasts newly-completed
+// quests. IMPORTANT: quest progress is recorded against the STABLE
+// accountId (../identity/identity.ts), never rooms.ts's ephemeral per-room
+// playerId - see accountIdFor below and server/API.md's "Identity" section
+// for why (the old behavior reset progress every match).
 
 /** Today's date (UTC) as YYYY-MM-DD - the period key questStore.ts's recordEvent needs. */
 function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-/** Folds one GameEvent into the shared quest store and broadcasts quest:completed (to that player only) for anything it newly completes. */
-function emitQuestEvent(io: RealtimeServer, event: GameEvent, dateISO: string): void {
-  const result = recordEvent(event, dateISO);
+/** The stable accountId for a room's ephemeral seat id, if that seat has one - absent for the synthetic VS Bot seat (see rooms.ts's createBotRoom), which never gets an accountId. */
+function accountIdFor(room: Room, ephemeralPlayerId: string): string | undefined {
+  return room.players.find((p) => p.playerId === ephemeralPlayerId)?.accountId;
+}
+
+/** Folds one GameEvent (already carrying an accountId in `playerId` - see accountIdFor) into the shared quest store and broadcasts quest:completed (to that account's socket(s) only) for anything it newly completes. */
+async function emitQuestEvent(io: RealtimeServer, event: GameEvent, dateISO: string): Promise<void> {
+  const result = await recordEvent(event, dateISO);
   for (const quest of result.completed) {
-    io.to(playerChannel(event.playerId)).emit("quest:completed", { questId: quest.id, title: quest.title });
+    io.to(accountChannel(event.playerId)).emit("quest:completed", { questId: quest.id, title: quest.title });
   }
 }
 
@@ -427,12 +482,20 @@ function augmentEventsForBot(room: Room, events: readonly GameEvent[]): readonly
   );
 }
 
-function processQuestEvents(io: RealtimeServer, room: Room, prevMatch: MatchState, nextMatch: MatchState): void {
+async function processQuestEvents(io: RealtimeServer, room: Room, prevMatch: MatchState, nextMatch: MatchState): Promise<void> {
   const events = augmentEventsForBot(room, eventsFromCall(prevMatch, nextMatch));
   if (events.length === 0) return;
 
   const dateISO = today();
-  for (const event of events) emitQuestEvent(io, event, dateISO);
+  for (const event of events) {
+    // Bot's own events (match_played/match_won for the synthetic VS Bot
+    // seat) have no accountId - there's nothing persistent to record
+    // progress against, so they're dropped rather than recorded under the
+    // bot's ephemeral seat id (see accountIdFor's doc).
+    const accountId = accountIdFor(room, event.playerId);
+    if (!accountId) continue;
+    await emitQuestEvent(io, { ...event, playerId: accountId }, dateISO);
+  }
 }
 
 // -- skills (in-match) ---------------------------------------------------
@@ -468,28 +531,34 @@ function armNullifyTimer(io: RealtimeServer, code: string, timeoutMs: number): v
 }
 
 /** Broadcasts a resolved (non-Nullified) skill's aftermath: updated match:state, skill:resolved, the skill_used quest event, whatever eventsFromCall derives from the prev->next transition (line completions, a win), and match:ended if it just finished. Shared by all three ways a skill can resolve without being Nullified: no capable opponent / CELL_SWAP (immediate, in the skill:use handler), every awaiting opponent passed (skill:respond), and the Nullify window timing out (autoPassNullify). */
-function announceSkillResolved(
+async function announceSkillResolved(
   io: RealtimeServer,
   room: Room,
   prevMatch: MatchState,
   nextMatch: MatchState,
   pending: Pick<PendingSkill, "playerId" | "effectType">,
-): void {
+): Promise<void> {
   io.to(roomChannel(room.code)).emit("skill:resolved", {
     playerId: pending.playerId,
     effectType: pending.effectType,
     nullified: false,
   });
   const dateISO = today();
-  emitQuestEvent(io, { type: "skill_used", playerId: pending.playerId, effectType: pending.effectType }, dateISO);
-  processQuestEvents(io, room, prevMatch, nextMatch);
+  // pending.playerId is the ephemeral room seat id (public, fine for the
+  // broadcast above) - map to accountId before recording quest progress,
+  // same as processQuestEvents (see accountIdFor's doc).
+  const accountId = accountIdFor(room, pending.playerId);
+  if (accountId) {
+    await emitQuestEvent(io, { type: "skill_used", playerId: accountId, effectType: pending.effectType }, dateISO);
+  }
+  await processQuestEvents(io, room, prevMatch, nextMatch);
   if (nextMatch.status === "finished") {
     io.to(roomChannel(room.code)).emit("match:ended", { winnerId: nextMatch.winnerId ?? null });
   }
 }
 
 /** Fires once a room's Nullify window (see armNullifyTimer) expires: every opponent still in `awaiting` auto-passes, in order - respondToSkill only needs each id to still be in the (shrinking) awaiting list, which holds regardless of order since every id here started out in it exactly once. */
-function autoPassNullify(io: RealtimeServer, code: string): void {
+async function autoPassNullify(io: RealtimeServer, code: string): Promise<void> {
   nullifyTimers.delete(code);
   const room = getRoom(code);
   const pending = room?.match?.pendingSkill;
@@ -505,7 +574,7 @@ function autoPassNullify(io: RealtimeServer, code: string): void {
 
   const updatedRoom = result.room;
   broadcastMatchState(io, updatedRoom);
-  announceSkillResolved(io, updatedRoom, prevMatch, updatedRoom.match!, pending);
+  await announceSkillResolved(io, updatedRoom, prevMatch, updatedRoom.match!, pending);
 }
 
 // -- bot (VS Bot turns, CONCEPT.md §2b) ----------------------------------
@@ -557,7 +626,7 @@ function maybeScheduleBotTurn(io: RealtimeServer, room: Room, delayMs: number): 
  * other reason between scheduling and firing (e.g. the human left, which
  * deletes a bot room outright - see rooms.ts's exitRoom).
  */
-function playBotTurn(io: RealtimeServer, code: string, delayMs: number): void {
+async function playBotTurn(io: RealtimeServer, code: string, delayMs: number): Promise<void> {
   botTimers.delete(code);
   const room = getRoom(code);
   if (!room || !isBotsTurn(room)) return;
@@ -572,7 +641,7 @@ function playBotTurn(io: RealtimeServer, code: string, delayMs: number): void {
 
   const updatedRoom = result.room;
   broadcastMatchState(io, updatedRoom);
-  processQuestEvents(io, updatedRoom, prevMatch, updatedRoom.match!);
+  await processQuestEvents(io, updatedRoom, prevMatch, updatedRoom.match!);
 
   if (updatedRoom.match?.status === "finished") {
     io.to(roomChannel(code)).emit("match:ended", { winnerId: updatedRoom.match.winnerId ?? null });
@@ -592,6 +661,12 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
   const resolveLoadout = opts.resolveLoadout;
   const nullifyTimeoutMs = opts.nullifyTimeoutMs ?? DEFAULT_NULLIFY_TIMEOUT_MS;
   const botDelayMs = opts.botDelayMs ?? DEFAULT_BOT_DELAY_MS;
+  // Stable identity store - picks Postgres/in-memory automatically (see
+  // ../identity/identity.ts and ../db/pool.ts) unless a test injects its
+  // own. Unlike verifyLoadout, this is never "disabled" - every socket ends
+  // up with an accountId, explicitly via identity:hello or automatically
+  // via ensureAccountId (see server/API.md's "Identity" section).
+  const identity = opts.identity ?? createIdentityStore();
   // One Plaza per server instance (not a module-level singleton) - see
   // plaza/plaza.ts's createPlazaStore doc for why: it keeps this server's
   // chat history/rate-limit state from bleeding into any other instance
@@ -600,8 +675,19 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
 
   io.on("connection", (socket) => {
     socket.on(
+      "identity:hello",
+      safeHandler<IdentityHelloPayload, IdentityHelloAckData>(async (payload, ack) => {
+        const token = typeof payload?.token === "string" ? payload.token : undefined;
+        const { playerId, token: resolvedToken } = await identity.hello(token);
+        socket.data.accountId = playerId;
+        socket.join(accountChannel(playerId));
+        ack({ ok: true, playerId, token: resolvedToken });
+      }),
+    );
+
+    socket.on(
       "room:create",
-      safeHandler<RoomCreatePayload, RoomJoinedAckData>((payload, ack) => {
+      safeHandler<RoomCreatePayload, RoomJoinedAckData>(async (payload, ack) => {
         const nickname = validateNickname(payload?.nickname);
         const mode = validateRoomMode(payload?.mode);
         if (mode === "standard" && !verifyLoadout) {
@@ -609,7 +695,8 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
         }
         const maxPlayers = validateOptionalMaxPlayers(payload?.maxPlayers);
         const visibility = validateIsPublicFlag(payload?.isPublic) ? "public" : "private";
-        const { room, playerId } = createRoom(nickname, {
+        const accountId = await ensureAccountId(socket, identity);
+        const { room, playerId } = createRoom(nickname, accountId, {
           mode,
           maxPlayers,
           visibility,
@@ -622,10 +709,11 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
 
     socket.on(
       "room:join",
-      safeHandler<RoomJoinPayload, RoomJoinedAckData>((payload, ack) => {
+      safeHandler<RoomJoinPayload, RoomJoinedAckData>(async (payload, ack) => {
         const code = validateRoomCode(payload?.code);
         const nickname = validateNickname(payload?.nickname);
-        const { room, playerId } = joinRoom(code, nickname, { wallet: socket.data.walletAddress });
+        const accountId = await ensureAccountId(socket, identity);
+        const { room, playerId } = joinRoom(code, nickname, accountId, { wallet: socket.data.walletAddress });
         joinSocketToRoom(socket, room.code, playerId);
         ack({ ok: true, code: room.code, playerId, view: lobbyView(room) });
         broadcastLobby(io, room);
@@ -641,10 +729,11 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
 
     socket.on(
       "room:quick",
-      safeHandler<RoomQuickPayload, RoomJoinedAckData>((payload, ack) => {
+      safeHandler<RoomQuickPayload, RoomJoinedAckData>(async (payload, ack) => {
         const nickname = validateNickname(payload?.nickname);
         const size = validateRoomSize(payload?.size);
-        const { room, playerId } = quickMatch(nickname, size, { wallet: socket.data.walletAddress });
+        const accountId = await ensureAccountId(socket, identity);
+        const { room, playerId } = quickMatch(nickname, size, accountId, { wallet: socket.data.walletAddress });
         joinSocketToRoom(socket, room.code, playerId);
         ack({ ok: true, code: room.code, playerId, view: lobbyView(room) });
         // Only broadcast when this call actually JOINED an existing room
@@ -660,7 +749,8 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
       safeHandler<RoomCreateBotPayload, RoomJoinedAckData>(async (payload, ack) => {
         const nickname = validateNickname(payload?.nickname);
         const level = validateBotLevel(payload?.level);
-        const { room, playerId } = await createBotRoom(nickname, level);
+        const accountId = await ensureAccountId(socket, identity);
+        const { room, playerId } = await createBotRoom(nickname, level, accountId);
         joinSocketToRoom(socket, room.code, playerId);
         ack({ ok: true, code: room.code, playerId, view: lobbyView(room) });
         broadcastLobby(io, room);
@@ -698,6 +788,16 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
         // server/API.md's "Wallet link" section.
         socket.data.walletNonce = undefined;
         const linkedAddress = address.toLowerCase();
+
+        // Persist the link to the stable account (../identity/identity.ts),
+        // not just this socket - throws if `linkedAddress` is already
+        // linked to a DIFFERENT account ("satu wallet = satu akun"), which
+        // safeHandler turns into an ack error below. wallet:link may be
+        // called before ever joining a room, so this may be the first thing
+        // that establishes an accountId for this socket at all.
+        const accountId = await ensureAccountId(socket, identity);
+        await identity.linkWallet(accountId, linkedAddress);
+
         socket.data.walletAddress = linkedAddress;
         ack({ ok: true, address: linkedAddress });
 
@@ -778,7 +878,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
 
     socket.on(
       "match:call",
-      safeHandler<MatchCallPayload, MatchCallAckData>((payload, ack) => {
+      safeHandler<MatchCallPayload, MatchCallAckData>(async (payload, ack) => {
         const ctx = requireSocketRoom(socket);
         const number = validateCalledNumber(payload?.number);
 
@@ -805,7 +905,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
         broadcastMatchState(io, updatedRoom);
 
         if (prevMatch && updatedRoom.match) {
-          processQuestEvents(io, updatedRoom, prevMatch, updatedRoom.match);
+          await processQuestEvents(io, updatedRoom, prevMatch, updatedRoom.match);
         }
 
         if (updatedRoom.match?.status === "finished") {
@@ -818,7 +918,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
 
     socket.on(
       "skill:use",
-      safeHandler<SkillUsePayload, MatchCallAckData>((payload, ack) => {
+      safeHandler<SkillUsePayload, MatchCallAckData>(async (payload, ack) => {
         const ctx = requireSocketRoom(socket);
         const effectType = validateEffectType(payload?.effectType);
         const args = validateSkillArgsPayload(payload?.args);
@@ -860,14 +960,14 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
         // Resolved immediately: no Nullify-capable opponent, or CELL_SWAP
         // (which never opens a window at all - see engine/skills.ts).
         if (prevMatch) {
-          announceSkillResolved(io, updatedRoom, prevMatch, nextMatch, { playerId: ctx.playerId, effectType });
+          await announceSkillResolved(io, updatedRoom, prevMatch, nextMatch, { playerId: ctx.playerId, effectType });
         }
       }),
     );
 
     socket.on(
       "skill:respond",
-      safeHandler<SkillRespondPayload, MatchCallAckData>((payload, ack) => {
+      safeHandler<SkillRespondPayload, MatchCallAckData>(async (payload, ack) => {
         const ctx = requireSocketRoom(socket);
         const nullify = validateNullifyFlag(payload?.nullify);
 
@@ -911,7 +1011,7 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
           return;
         }
 
-        announceSkillResolved(io, updatedRoom, prevMatch, nextMatch, pending);
+        await announceSkillResolved(io, updatedRoom, prevMatch, nextMatch, pending);
       }),
     );
 
@@ -925,8 +1025,11 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
 
     socket.on(
       "plaza:send",
-      safeHandler<PlazaSendPayload, PlazaSendAckData>((payload, ack) => {
-        const message = plaza.addMessage(socket.id, payload);
+      safeHandler<PlazaSendPayload, PlazaSendAckData>(async (payload, ack) => {
+        // accountId is attached ONLY if this socket already has one (see
+        // plaza.ts's doc) - Plaza never forces identity creation just to
+        // chat (guest play stays guest play).
+        const message = await plaza.addMessage(socket.id, payload, undefined, socket.data.accountId);
         ack({ ok: true, message });
         io.emit("plaza:message", message);
       }),
@@ -934,8 +1037,8 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
 
     socket.on(
       "plaza:history",
-      safeHandler<EmptyAckData, PlazaHistoryAckData>((_payload, ack) => {
-        ack({ ok: true, messages: plaza.getHistory() });
+      safeHandler<EmptyAckData, PlazaHistoryAckData>(async (_payload, ack) => {
+        ack({ ok: true, messages: await plaza.getHistory() });
       }),
     );
 

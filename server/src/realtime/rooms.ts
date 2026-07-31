@@ -10,8 +10,21 @@
  * The pure game engine (../engine) never sees a Room - it only sees the
  * MatchState that gets built once every player has submitted a board.
  *
- * // ponytail: in-memory store, hilang saat restart - ganti Redis/persistence
- * kalau sudah perlu scale/reconnect.
+ * // ponytail: rooms/matches stay in-memory ON PURPOSE, even though
+ * players/quest_progress/daily_scores/plaza_messages now persist to
+ * Postgres when configured (see ../db/, ../identity/identity.ts,
+ * ../api/questStore.ts, ../api/dailyLeaderboard.ts, ../plaza/plaza.ts). A
+ * match is minutes long and is tied to live socket connections - there is
+ * no "resume" story for a Socket.IO room after a process restart (every
+ * client would need to reconnect and re-authenticate anyway), so
+ * persisting Room/MatchState would be state nobody could ever actually
+ * recover, just risk of drift. Consequence: a server restart mid-match
+ * loses that match outright (same as before this task - see rooms.ts's
+ * exitRoom for the equivalent "player disconnects mid-match" case, which
+ * already aborts rather than trying to preserve anything). What DOES
+ * survive a restart: each player's stable accountId, their quest progress,
+ * daily leaderboard entries, and Plaza history - only the ephemeral
+ * in-match state is lost.
  */
 
 import { randomUUID } from "node:crypto";
@@ -76,10 +89,22 @@ export interface RoomBot {
 export const MAX_LOADOUT_SIZE = 2;
 
 export interface RoomPlayer {
+  /** Ephemeral, per-room seat id - fresh randomUUID() every createRoom/joinRoom, used for turn order/board redaction. NEVER used as a persistence key (see accountId below) - see server/API.md's "Identity" section for why. */
   readonly playerId: string;
   nickname: string;
   board?: Board;
   connected: boolean;
+  /**
+   * Stable account id (../identity/identity.ts) - survives across rooms/
+   * matches/reconnects, the key quest progress and (when supplied) the
+   * daily leaderboard are recorded against (see api/questStore.ts,
+   * api/dailyLeaderboard.ts). Always set for a human player (server.ts
+   * resolves one via identity:hello or an automatic anonymous fallback
+   * before ever calling createRoom/joinRoom) - absent only for the
+   * synthetic VS Bot seat (see createBotRoom), which has no persistent
+   * identity of its own.
+   */
+  readonly accountId?: string;
   /** Linked wallet address (lowercased) - set via wallet:link, see server.ts. */
   wallet?: string;
   /** On-chain-verified loadout (skill token ids) - set via loadout:set, "standard" mode only. */
@@ -157,8 +182,12 @@ function validateMaxPlayers(maxPlayers: number): void {
   }
 }
 
-/** Creates a new lobby with `nickname` as the sole player and host. */
-export function createRoom(nickname: string, opts: CreateRoomOptions = {}): { room: Room; playerId: string } {
+/** Creates a new lobby with `nickname` as the sole player and host. `accountId` is the caller's stable identity (../identity/identity.ts) - server.ts always resolves one (identity:hello or an automatic anonymous fallback) before calling this. */
+export function createRoom(
+  nickname: string,
+  accountId: string,
+  opts: CreateRoomOptions = {},
+): { room: Room; playerId: string } {
   const maxPlayers = opts.maxPlayers ?? MAX_PLAYERS;
   validateMaxPlayers(maxPlayers);
 
@@ -171,7 +200,7 @@ export function createRoom(nickname: string, opts: CreateRoomOptions = {}): { ro
     maxPlayers,
     visibility: opts.visibility ?? "private",
     autoStart: opts.autoStart ?? false,
-    players: [{ playerId, nickname, connected: true, wallet: opts.wallet }],
+    players: [{ playerId, accountId, nickname, connected: true, wallet: opts.wallet }],
     phase: "lobby",
   };
   rooms.set(code, room);
@@ -189,10 +218,12 @@ export interface JoinRoomOptions {
  * fills an autoStart room (CONCEPT.md §2b's Quick Match) while it's still
  * in "lobby", the room advances straight into "draft" - no host action
  * needed, matching room:quick's "auto-mulai draft begitu penuh".
+ * `accountId` - see createRoom's doc.
  */
 export function joinRoom(
   code: string,
   nickname: string,
+  accountId: string,
   opts: JoinRoomOptions = {},
 ): { room: Room; playerId: string } {
   const room = requireRoom(code);
@@ -205,7 +236,7 @@ export function joinRoom(
   }
 
   const playerId = randomUUID();
-  room.players.push({ playerId, nickname, connected: true, wallet: opts.wallet });
+  room.players.push({ playerId, accountId, nickname, connected: true, wallet: opts.wallet });
 
   if (room.autoStart && room.phase === "lobby" && room.players.length >= room.maxPlayers) {
     room.phase = "draft";
@@ -245,6 +276,7 @@ export interface QuickMatchOptions {
 export function quickMatch(
   nickname: string,
   size: number,
+  accountId: string,
   opts: QuickMatchOptions = {},
 ): { room: Room; playerId: string } {
   validateMaxPlayers(size);
@@ -260,10 +292,10 @@ export function quickMatch(
   );
 
   if (existing) {
-    return joinRoom(existing.code, nickname, { wallet: opts.wallet });
+    return joinRoom(existing.code, nickname, accountId, { wallet: opts.wallet });
   }
 
-  return createRoom(nickname, {
+  return createRoom(nickname, accountId, {
     mode: "casual",
     visibility: "public",
     autoStart: true,
@@ -288,10 +320,18 @@ export interface CreateBotRoomOptions {
  * starts once the human ALSO submits a board (submitBoard's usual "every
  * player has one" gate) - see realtime/server.ts for what schedules the
  * bot's own turns once play begins.
+ *
+ * `accountId` - the human host's stable identity (see createRoom's doc) -
+ * used for the bot-ladder quest events a win against this bot produces
+ * (CONCEPT.md §2b). The bot's own RoomPlayer entry deliberately gets no
+ * accountId - it has no persistent identity, and its own match_played/
+ * match_won events are dropped rather than recorded (see
+ * realtime/server.ts's accountIdFor).
  */
 export async function createBotRoom(
   nickname: string,
   level: number,
+  accountId: string,
   opts: CreateBotRoomOptions = {},
 ): Promise<{ room: Room; playerId: string }> {
   if (!Number.isInteger(level) || level < 1 || level > 10) {
@@ -299,7 +339,7 @@ export async function createBotRoom(
   }
   const rng = opts.rng ?? Math.random;
 
-  const { room, playerId } = createRoom(nickname, { mode: "casual", visibility: "private", maxPlayers: 2 });
+  const { room, playerId } = createRoom(nickname, accountId, { mode: "casual", visibility: "private", maxPlayers: 2 });
 
   const botPlayerId = `bot:${randomUUID()}`;
   room.players.push({ playerId: botPlayerId, nickname: `Bot Lv${level}`, connected: true });

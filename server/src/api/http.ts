@@ -306,6 +306,13 @@ async function handleRequest(
       const nickname = validateNickname(record.nickname);
       const boardNumbers = validateBoardNumbers(record.board);
       const date = parseDateParam(typeof record.date === "string" ? record.date : null);
+      // Optional: the stable accountId from a prior socket identity:hello
+      // handshake (see server/API.md's "Identity" section) - HTTP play
+      // works fine without one (guest play), it just won't be deduped
+      // against itself in the Postgres-backed leaderboard (see
+      // dailyLeaderboard.ts's doc).
+      const accountId =
+        typeof record.accountId === "string" && record.accountId.trim().length > 0 ? record.accountId.trim() : undefined;
 
       let result;
       try {
@@ -314,7 +321,7 @@ async function handleRequest(
         throw new HttpError(400, err instanceof Error ? err.message : "Invalid board");
       }
 
-      submitScore(date, { nickname, score: result.score, callsToBingo: result.callsToBingo });
+      await submitScore(date, { nickname, score: result.score, callsToBingo: result.callsToBingo, accountId });
 
       ok(res, {
         number: result.number,
@@ -330,7 +337,7 @@ async function handleRequest(
 
     if (method === "GET" && pathname === "/daily/leaderboard") {
       const date = parseDateParam(url.searchParams.get("date"));
-      ok(res, getLeaderboard(date));
+      ok(res, await getLeaderboard(date));
       return;
     }
 
@@ -340,9 +347,13 @@ async function handleRequest(
     }
 
     if (method === "GET" && pathname.startsWith("/quests/progress/")) {
+      // `:playerId` here means the stable accountId from identity:hello
+      // (see server/API.md's "Identity" section) - kept in the URL/param
+      // name for backward compatibility, but it is NOT realtime/rooms.ts's
+      // ephemeral per-room playerId.
       const playerId = decodeURIComponent(pathname.slice("/quests/progress/".length));
       if (playerId.length === 0) throw new HttpError(400, "playerId is required");
-      ok(res, getProgress(playerId));
+      ok(res, await getProgress(playerId));
       return;
     }
 

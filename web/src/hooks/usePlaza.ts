@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import type { PlazaMessage } from "@thebingofi/server/protocol";
 
+import { ensureIdentity } from "@/lib/identity";
 import { getSocket } from "@/lib/socket";
 
 export interface PlazaState {
@@ -58,6 +59,16 @@ export function usePlaza() {
     socket.connect();
 
     socket.on("plaza:message", (message) => dispatch({ type: "message", message }));
+
+    // Best-effort identity handshake (lib/identity.ts) so Plaza
+    // participation is attributable to a stable accountId when one exists -
+    // fired in parallel with plaza:history below, never blocks chat itself.
+    // On failure the server just treats this socket as a fresh anonymous
+    // identity (see server/API.md's "Identity" section) - nothing to
+    // surface to the user here.
+    ensureIdentity(socket).catch(() => {
+      // Intentionally ignored - see comment above.
+    });
 
     socket.emit("plaza:history", {}, (res) => {
       if (res.ok) dispatch({ type: "history", messages: res.messages });
