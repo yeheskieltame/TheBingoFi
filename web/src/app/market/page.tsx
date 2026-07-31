@@ -101,7 +101,7 @@ export default function MarketPage() {
   return (
     // Full-bleed: layout membungkus halaman di max-w-6xl, sementara etalase
     // kartu butuh lebar penuh supaya satu baris memuat banyak kartu.
-    <main className="relative left-1/2 w-screen max-w-[1700px] -translate-x-1/2 px-4 pb-16 pt-6 sm:px-8">
+    <main className="relative left-1/2 w-screen max-w-[1700px] -translate-x-1/2 px-3 pb-12 pt-4 sm:px-8 sm:pb-16 sm:pt-6">
 
       {/* Baris kepala: banner lebar + kartu sorotan, pola etalase kartu koleksi. */}
       <div className="grid gap-3 lg:grid-cols-[2.4fr_1fr]">
@@ -115,8 +115,8 @@ export default function MarketPage() {
             className="object-cover object-bottom"
           />
           <div aria-hidden className="absolute inset-0 bg-gradient-to-r from-night via-night/70 to-night/20" />
-          <div className="relative space-y-3 p-5 sm:p-6">
-            <h1 className="max-w-sm font-display text-2xl font-bold leading-tight tracking-tight text-frost sm:text-3xl">
+          <div className="relative space-y-3 p-4 sm:p-6">
+            <h1 className="max-w-sm font-display text-xl font-bold leading-tight tracking-tight text-frost sm:text-3xl">
               {t.heroTitle}
             </h1>
             <p className="max-w-sm text-xs text-frost/60">{t.subtitle}</p>
@@ -130,7 +130,7 @@ export default function MarketPage() {
         </section>
 
         {/* Sorotan = skill dengan supply paling kecil (dihitung dari sale on-chain). */}
-        <section className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-night/55 p-5 backdrop-blur-md">
+        <section className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-night/55 p-4 backdrop-blur-md sm:p-5">
           <p className="text-[0.7rem] uppercase tracking-[0.2em] text-ice/40">{t.spotlightLabel}</p>
           {spotlight ? (
             <>
@@ -169,7 +169,7 @@ export default function MarketPage() {
 
       {/* Judul katalog + tautan kontrak, sejajar seperti header section etalase. */}
       <div id="catalog" className="mt-8 flex items-baseline justify-between gap-3 scroll-mt-24">
-        <h2 className="font-display text-2xl font-bold uppercase italic tracking-tight text-frost sm:text-3xl">
+        <h2 className="font-display text-xl font-bold uppercase italic tracking-tight text-frost sm:text-3xl">
           {t.catalogTitle}
         </h2>
         <a
@@ -193,7 +193,7 @@ export default function MarketPage() {
         {/* Skeleton sebentuk kartu: tinggi grid tidak melompat begitu data
             on-chain masuk, dan jumlahnya menebak katalog yang sudah ada. */}
         {catalog.loading && !catalog.catalog && (
-          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {Array.from({ length: 5 }, (_, index) => (
               <SkillCardSkeleton key={index} />
             ))}
@@ -221,7 +221,7 @@ export default function MarketPage() {
         )}
 
         {catalog.catalog && catalog.catalog.length > 0 && (
-          <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {catalog.catalog.map((entry) => (
               <SkillMarketCard
                 key={entry.skillId}

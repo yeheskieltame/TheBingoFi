@@ -91,14 +91,19 @@ export default function SkillMarketCard({
     /* Satu bidang: art memenuhi kartu, seluruh info duduk sebagai overlay di
        atasnya. Sebelumnya art dan blok teks terpisah, jadi kartunya jangkung
        (tombol beli sampai keluar layar) dan menyisakan ruang kosong. */
-    <li className="group relative flex aspect-[3/4] flex-col justify-end overflow-hidden rounded-2xl border border-white/10 bg-night/70 transition-all hover:-translate-y-1 hover:border-frost/40">
+    /* Tinggi kartu dikunci ke rasio 3:4 baru dari `sm`. Di HP kartunya cuma
+       ~155px lebar, jadi rasio itu menyisakan ~200px tinggi - lebih pendek dari
+       blok info+aksi, dan isinya meluap ke atas menimpa badge tier serta keluar
+       dari gradasi (teks putih di atas art terang). Di mobile tingginya
+       mengikuti isi. */
+    <li className="group relative flex min-h-72 flex-col justify-end overflow-hidden rounded-2xl border border-white/10 bg-night/70 transition-all hover:-translate-y-1 hover:border-frost/40 sm:aspect-[3/4] sm:min-h-0">
       <SkillMedia
         imageUrl={artUrl}
         animationUrl={metadata?.animation_url}
         label={displayName}
         className="absolute inset-0 h-full w-full transition-transform duration-500 group-hover:scale-105"
       />
-      <div aria-hidden className="absolute inset-x-0 bottom-0 h-3/5 bg-gradient-to-t from-night via-night/85 to-transparent" />
+      <div aria-hidden className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-night via-night/90 to-transparent sm:h-3/5" />
 
 
       <div className="absolute left-2 top-2 flex flex-col items-start gap-1">
@@ -116,25 +121,38 @@ export default function SkillMarketCard({
         {!entry.active && <span className="rounded-full bg-night/80 px-2 py-0.5 text-[0.7rem] text-ice">{t.inactive}</span>}
       </div>
 
-      <div className="relative space-y-2 p-3">
+      <div className="relative space-y-2 p-2.5 sm:p-3">
         <div>
           <button
             type="button"
             onClick={onViewDetails}
-            className="block max-w-full truncate text-left font-display text-base font-bold leading-tight text-frost transition-colors hover:text-glacier"
+            className="block max-w-full truncate text-left font-display text-sm font-bold leading-tight text-frost transition-colors hover:text-glacier sm:text-base"
           >
             {displayName}
           </button>
-          <p className="truncate text-[0.7rem] text-ice/50">
-            #{entry.skillId} · {t.charges} {entry.charges} · {t.maxPerLoadout} {entry.maxPerLoadout}
+          {/* Label lengkap ("Charges/match", "Max per loadout") tidak muat di
+              kartu HP dan cuma jadi potongan kata; di sana angkanya saja yang
+              tampil, teks penuhnya tetap ada di dialog detail. */}
+          <p className="truncate text-[0.65rem] text-ice/50 sm:text-[0.7rem]">
+            <span>#{entry.skillId}</span>
+            <span className="hidden sm:inline">
+              {" "}
+              · {t.charges} {entry.charges} · {t.maxPerLoadout} {entry.maxPerLoadout}
+            </span>
+            <span className="sm:hidden">
+              {" "}
+              · {entry.charges}/{entry.maxPerLoadout}
+            </span>
           </p>
         </div>
 
         {sale ? (
           <>
-            <div className="flex items-baseline justify-between gap-2">
+            {/* flex-wrap: harga + sisa stok tidak muat sebaris di kartu HP,
+                stok turun ke baris berikutnya alih-alih saling menimpa. */}
+            <div className="flex flex-wrap items-baseline justify-between gap-x-2">
               <span className="flex items-baseline gap-1.5">
-                <span className="font-display text-lg font-bold leading-none text-frost">
+                <span className="font-display text-base font-bold leading-none text-frost sm:text-lg">
                   {priceLoading || currentPrice === undefined ? "—" : formatEther(currentPrice)}
                 </span>
                 <span className="text-[0.7rem] text-ice/45">ETH</span>
@@ -158,7 +176,9 @@ export default function SkillMarketCard({
           <p className="text-xs text-ice/45">{t.loading}</p>
         )}
 
-        <div className="flex items-center gap-2">
+        {/* flex-wrap: di kartu sempit (2 kolom di HP) stepper + tombol beli tidak
+            muat sebaris, jadi tombolnya turun jadi baris penuh. */}
+        <div className="flex flex-wrap items-center gap-2">
           <AmountStepper
             id={`amount-${entry.skillId}`}
             label={t.amountLabel}
@@ -171,7 +191,7 @@ export default function SkillMarketCard({
             type="button"
             onClick={onBuy}
             disabled={!canBuy || buyDisabled}
-            className="flex-1 rounded-full bg-glacier-deep py-1.5 font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
+            className="min-w-20 flex-1 truncate rounded-full bg-glacier-deep px-2 py-1.5 font-display text-sm font-bold text-frost transition-colors hover:bg-glacier disabled:cursor-not-allowed disabled:opacity-30"
           >
             {soldOut
               ? t.soldOut
