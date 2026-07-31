@@ -75,22 +75,28 @@ export default function Header() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/5 bg-night/85 text-frost backdrop-blur-md">
-      {/* 3 kolom (logo | nav tengah | aksi) mengikuti pola nav referensi - di mobile jatuh ke stack tengah. */}
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-3 px-4 py-3 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr] md:gap-4">
+      {/* 3 kolom (logo | nav tengah | aksi). Di mobile jadi 2 baris: logo + aksi
+          di baris pertama, nav memenuhi baris kedua (bisa digeser mendatar kalau
+          sempit) - kalau semuanya dibiarkan wrap, header sticky memakan 3 baris
+          layar. */}
+      <div className="mx-auto grid max-w-6xl grid-cols-[1fr_auto] items-center gap-x-2 gap-y-2 px-3 py-2.5 sm:px-6 md:grid-cols-[1fr_auto_1fr] md:gap-4 md:py-3">
         {/* Logo tetap link Home, tanpa indikator aktif - entri nav "Play" yang
             menandai "/" supaya tidak ada dua penanda menyala bersamaan. */}
         <Link
           href="/"
           title={t.nav.home}
-          className="flex items-center gap-2 font-display text-2xl font-bold tracking-tight text-frost transition-opacity hover:opacity-80 md:justify-self-start"
+          className="flex items-center gap-2 justify-self-start font-display text-xl font-bold tracking-tight text-frost transition-opacity hover:opacity-80 sm:text-2xl"
         >
           {/* Mark dekoratif: wordmark di sebelahnya sudah jadi nama aksesibel link. */}
           <Image src="/logo.svg" alt="" aria-hidden width={28} height={28} priority className="size-7" />
           {t.landing.title}
         </Link>
 
-        <nav aria-label={t.nav.home} className="md:justify-self-center">
-          <ul className="flex flex-wrap items-center justify-center gap-0.5 lg:gap-1">
+        <nav
+          aria-label={t.nav.home}
+          className="order-last col-span-2 -mx-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:order-none md:col-span-1 md:mx-0 md:overflow-visible md:px-0 md:justify-self-center"
+        >
+          <ul className="flex items-center justify-center gap-0.5 lg:gap-1">
             {NAV_ITEMS.map((item) => {
               // startsWith menangkap sub-route (mis. /market/xyz nanti ikut menyala);
               // `also` menangkap halaman lain yang masih "milik" entri ini (/play).
@@ -101,7 +107,7 @@ export default function Header() {
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    className={`relative block whitespace-nowrap rounded-full px-2.5 py-1.5 font-display text-[0.95rem] transition-colors lg:px-3 lg:text-base after:absolute after:inset-x-3 after:-bottom-0.5 after:h-0.5 after:rounded-full after:transition-colors after:content-[''] ${
+                    className={`relative block whitespace-nowrap rounded-full px-2 py-1.5 font-display text-sm transition-colors sm:px-2.5 sm:text-[0.95rem] lg:px-3 lg:text-base after:absolute after:inset-x-3 after:-bottom-0.5 after:h-0.5 after:rounded-full after:transition-colors after:content-[''] ${
                       active
                         ? "font-bold text-frost after:bg-frost"
                         : "font-semibold text-ice/60 after:bg-transparent hover:text-frost"
@@ -115,7 +121,7 @@ export default function Header() {
           </ul>
         </nav>
 
-        <div className="flex shrink-0 items-center gap-1.5 md:justify-self-end">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5 justify-self-end">
           <button
             type="button"
             onClick={toggleLocale}
@@ -195,7 +201,7 @@ export default function Header() {
               onClick={wallet.connect}
               disabled={wallet.isConnecting || !wallet.hasConnector}
               title={wallet.hasConnector ? undefined : t.wallet.notInstalled}
-              className="flex h-9 shrink-0 items-center whitespace-nowrap rounded-full bg-frost px-5 font-display text-sm font-bold text-glacier-ink transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-9 shrink-0 items-center whitespace-nowrap rounded-full bg-frost px-4 font-display text-sm font-bold text-glacier-ink sm:px-5 transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {wallet.isConnecting ? t.wallet.connecting : t.wallet.connect}
             </button>

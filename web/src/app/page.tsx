@@ -174,9 +174,11 @@ export default function Home() {
 
       {/* Pemilih mode ala layar "mode select" game: kartu art besar dipilih dulu,
           opsinya muncul di panel bawah, lalu SATU tombol aksi utama. */}
+      {/* Di mobile 2x2: empat kartu sebaris butuh minimal ~500px, jadi di HP
+          deretannya keluar layar. Dari sm ke atas kembali satu baris. */}
       <section
         aria-label={t.modePickerLabel}
-        className="flex items-center justify-center gap-2 px-1 sm:gap-4"
+        className="mx-auto grid w-full max-w-sm grid-cols-2 justify-items-center gap-3 px-1 sm:flex sm:max-w-none sm:items-center sm:justify-center sm:gap-4"
       >
         {MODE_CARDS.map((card) => {
           const active = openMode === card.id;
@@ -191,7 +193,7 @@ export default function Home() {
               aria-haspopup="dialog"
               aria-expanded={active}
               onClick={() => setOpenMode(card.id)}
-              className={`group relative aspect-[300/520] w-[clamp(7.5rem,23vw,15rem)] shrink-0 transition-all duration-300 ${
+              className={`group relative aspect-[300/520] w-full shrink-0 transition-all duration-300 sm:w-[clamp(7.5rem,23vw,15rem)] ${
                 active
                   ? "z-10 scale-105 drop-shadow-[0_0_32px_rgba(120,190,255,0.6)]"
                   : dimmed
@@ -203,7 +205,7 @@ export default function Home() {
                 src={card.image}
                 alt={label}
                 fill
-                sizes="(max-width: 640px) 30vw, 240px"
+                sizes="(max-width: 640px) 45vw, 240px"
                 className="object-contain"
               />
               {active && (
@@ -473,8 +475,8 @@ export default function Home() {
 
       {/* Gabung via kode: baris tipis, tanpa kartu. Nickname TIDAK diminta di
           sini - satu-satunya tempat mengisinya adalah modal mode. */}
-      <form onSubmit={handleJoinByCode} className="mx-auto flex max-w-md items-center gap-2">
-        <label htmlFor="joinCode" className="shrink-0 font-display text-base font-medium text-ice/60">
+      <form onSubmit={handleJoinByCode} className="mx-auto flex max-w-md flex-wrap items-center justify-center gap-2">
+        <label htmlFor="joinCode" className="shrink-0 font-display text-sm font-medium text-ice/60 sm:text-base">
           {t.joinPrompt}
         </label>
         <input
@@ -484,7 +486,7 @@ export default function Home() {
           onChange={(event) => setJoinCode(event.target.value)}
           placeholder="ABC123"
           aria-label={t.joinCodeLabel}
-          className="min-w-0 flex-1 rounded-full border border-white/15 bg-night/50 px-4 py-2 font-mono backdrop-blur-md text-sm uppercase tracking-widest text-frost placeholder:tracking-normal placeholder:text-ice/30 focus:border-white/30 focus:outline-none"
+          className="min-w-0 flex-1 basis-32 rounded-full border border-white/15 bg-night/50 px-4 py-2 font-mono backdrop-blur-md text-sm uppercase tracking-widest text-frost placeholder:tracking-normal placeholder:text-ice/30 focus:border-white/30 focus:outline-none"
         />
         <button
           type="submit"
@@ -496,7 +498,7 @@ export default function Home() {
       </form>
 
       <nav aria-label={t.title}>
-        <ul className="flex items-center justify-center gap-6 font-display text-base font-medium text-ice/50">
+        <ul className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 font-display text-sm font-medium text-ice/50 sm:gap-6 sm:text-base">
           {FOOTER_LINKS.map((entry) => (
             <li key={entry.href}>
               <Link href={entry.href} className="transition-colors hover:text-frost">
