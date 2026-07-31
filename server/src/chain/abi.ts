@@ -1,9 +1,18 @@
 /**
  * Minimal, hand-written ABIs (viem's `parseAbi` human-readable format) for
  * the read-only on-chain surface the game server needs: skill catalog
- * lookups (SkillRegistry) and ownership checks (SkillCollection), plus
- * Marketplace.sales for completeness. These MUST match contracts/src/*.sol
- * exactly - see SkillRegistry.sol, SkillCollection.sol, Marketplace.sol.
+ * lookups (SkillRegistry) and ownership checks (SkillCollection). These MUST
+ * match contracts/src/*.sol exactly - see SkillRegistry.sol,
+ * SkillCollection.sol.
+ *
+ * Marketplace is deliberately absent: the server never reads sale state
+ * (pricing/stock is the web client's concern, and it imports the full
+ * generated ABI from contracts/abi/Marketplace.json instead of
+ * hand-maintaining one). A hand-written `sales()` declaration used to live
+ * here, went stale when Marketplace v2 added `lastPurchaseAt`, and was never
+ * imported by anything - so it was removed rather than fixed. If the server
+ * ever needs Marketplace reads, import contracts/abi/Marketplace.json the
+ * same way web/src/lib/chain.ts does.
  *
  * Deliberately not the full contract ABIs: only the read functions the
  * chain reader (./reader.ts) actually calls. Small surface, kept in sync by
@@ -34,15 +43,4 @@ export const skillRegistryAbi = parseAbi([
 export const skillCollectionAbi = parseAbi([
   "function balanceOfBatch(address[] accounts, uint256[] ids) view returns (uint256[])",
   "function uri(uint256 id) view returns (string)",
-]);
-
-/**
- * Marketplace.sales - the public-mapping auto-getter for `mapping(uint256 =>
- * Sale) public sales` in contracts/src/Marketplace.sol. Solidity generates
- * this getter with each struct field as its own named OUTPUT PARAMETER
- * (not a single tuple), so viem decodes the result as a positional array
- * `[price, maxSupply, minted, active]`, not an object.
- */
-export const marketplaceAbi = parseAbi([
-  "function sales(uint256 skillId) view returns (uint256 price, uint256 maxSupply, uint256 minted, bool active)",
 ]);

@@ -32,9 +32,12 @@ export default function DailyPage() {
     daily.play(trimmed, draft.numbers);
   }
 
+  // Server mengirim share card dalam dua bahasa; pakai yang cocok dengan locale aktif.
+  const shareCard = daily.result ? (locale === "en" ? daily.result.shareCardEn : daily.result.shareCard) : "";
+
   function handleCopy() {
-    if (!daily.result) return;
-    navigator.clipboard.writeText(daily.result.shareCard).then(() => {
+    if (!shareCard) return;
+    navigator.clipboard.writeText(shareCard).then(() => {
       setCopied(true);
     });
   }
@@ -122,7 +125,7 @@ export default function DailyPage() {
               number={daily.result.number}
               score={daily.result.score}
               callsToBingo={daily.result.callsToBingo}
-              shareCard={daily.result.shareCard}
+              shareCard={shareCard}
               markedAtBingo={daily.result.markedAtBingo}
               copied={copied}
               onCopy={handleCopy}

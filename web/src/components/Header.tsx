@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LuChevronDown, LuLogOut, LuUser } from "react-icons/lu";
 
 import { useLocale } from "@/hooks/useLocale";
@@ -42,7 +42,14 @@ export default function Header() {
 
   /** Menu wallet (profil + putuskan). Dulu address dan Disconnect dua pill
    *  terpisah; digabung supaya bar kanan tidak sesak dan aksinya terkelompok. */
-  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  /** Menyimpan pathname saat menu dibuka; menu dianggap tertutup begitu
+   *  pathname berubah (mis. klik "Profilku") — turunan, bukan efek. */
+  const [openedAtPath, setOpenedAtPath] = useState<string | null>(null);
+  const walletMenuOpen = openedAtPath === pathname;
+  const setWalletMenuOpen = useCallback(
+    (next: boolean) => setOpenedAtPath(next ? pathname : null),
+    [pathname],
+  );
   const walletMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -59,10 +66,7 @@ export default function Header() {
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [walletMenuOpen]);
-
-  // Menu ikut tertutup begitu pindah halaman (mis. klik "Profilku").
-  useEffect(() => setWalletMenuOpen(false), [pathname]);
+  }, [walletMenuOpen, setWalletMenuOpen]);
 
   function toggleLocale() {
     setLocale(locale === "id" ? "en" : "id");
@@ -141,7 +145,7 @@ export default function Header() {
               <div ref={walletMenuRef} className="relative">
                 <button
                   type="button"
-                  onClick={() => setWalletMenuOpen((open) => !open)}
+                  onClick={() => setWalletMenuOpen(!walletMenuOpen)}
                   aria-haspopup="menu"
                   aria-expanded={walletMenuOpen}
                   className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-white/15 pl-3 pr-2 font-mono text-xs text-ice transition-colors hover:border-white/30 hover:text-frost"

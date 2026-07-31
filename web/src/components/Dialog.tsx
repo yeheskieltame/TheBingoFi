@@ -1,13 +1,16 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useSyncExternalStore, type ReactNode } from "react";
 import Image from "next/image";
 import { createPortal } from "react-dom";
 import { LuX } from "react-icons/lu";
 
 import { useLocale } from "@/hooks/useLocale";
 import { strings } from "@/i18n/strings";
+
+/** Mount-state tidak pernah berubah setelah hydrate, jadi tidak perlu subscribe apa pun. */
+const subscribeNoop = () => () => {};
 
 export interface DialogProps {
   readonly open: boolean;
@@ -48,8 +51,9 @@ export default function Dialog({
   const locale = useLocale();
   const t = strings[locale].common;
   // Portal baru dipasang setelah mount supaya markup server dan klien cocok.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // useSyncExternalStore, bukan setState-di-effect: snapshot server selalu
+  // false, snapshot klien selalu true — tanpa render bertingkat.
+  const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false);
 
   useEffect(() => {
     if (!open) return;

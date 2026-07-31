@@ -36,7 +36,7 @@ flowchart TB
 
     Server -. "getSkill / balanceOfBatch<br/>(verifikasi loadout)" .-> Registry
     Server -.-> Collection
-    FE -. "sales / priceOf / uri / royaltyInfo" .-> Market
+    FE -. "priceOf (quote) / sales (stok)" .-> Market
     FE -.-> Collection
 ```
 
@@ -161,19 +161,49 @@ tiap saat dari `Marketplace.priceOf(skillId)`.
   dalam transaksi yang sama, jadi FE bisa kirim quote + small buffer untuk
   jaga-jaga tanpa takut dana nyangkut. `msg.value` yang kurang dari cost akan
   revert `InsufficientPayment(expected, actual)`.
-- **Cek kepemilikan**: `SkillCollection.balanceOf(owner, skillId)` — dipakai
-  server saat matchmaking untuk verifikasi loadout, dan FE untuk tampilkan
-  inventory.
-- **Metadata token**: `SkillCollection.uri(skillId)` (ERC-1155 standard, base
-  URI dengan placeholder `{id}`).
-- **Katalog skill**: `SkillRegistry.getSkill(skillId)` — ambil `SkillDef`
-  lengkap untuk render kartu skill di FE (nama/efek di-resolve dari
-  `metadataURI`, aturan main dari `charges`/`cooldown`/`maxPerLoadout`).
-- **Royalti (marketplace sekunder pihak ketiga)**:
-  `SkillCollection.royaltyInfo(tokenId, salePrice)` (EIP-2981) → mengembalikan
-  `(receiver, 5% dari salePrice)`.
+- **Stok & harga dasar**: `Marketplace.sales(skillId)` → `(basePrice,
+  maxSupply, minted, active, lastPurchaseAt)`. Dipakai FE HANYA untuk stok
+  ("tersisa X dari Y"), tier kelangkaan, dan badge diskon (bandingkan dengan
+  `priceOf`) — **bukan** untuk menghitung harga beli.
+- **Cek kepemilikan**: `SkillCollection.balanceOfBatch(owners, skillIds)` —
+  dipakai server saat matchmaking untuk verifikasi loadout, dan FE untuk
+  inventory/koleksi (satu call untuk banyak id; `balanceOf` single tidak
+  dipakai).
+- **Katalog skill**: `SkillRegistry.nextSkillId()` lalu
+  `SkillRegistry.getSkill(skillId)` 1..n — ambil `SkillDef` lengkap untuk
+  aturan main (`charges`/`cooldown`/`maxPerLoadout`) dan `rarity`.
+
+### Yang TIDAK dipanggil aplikasi (sengaja)
+
+- **`SkillCollection.uri(skillId)` dan field `SkillDef.metadataURI`** — nama,
+  deskripsi, dan asset skill di-render dari endpoint game server
+  (`GET /metadata/{id}.json`, lihat `server/API.md`), yang membangun JSON
+  dari `effectType`/`rarity` on-chain. Artinya **sumber kebenaran metadata
+  untuk UI adalah server, bukan `uri()` on-chain** — mengubah base URI atau
+  `metadataURI` di chain TIDAK akan mengubah tampilan di app (tapi tetap
+  dipakai wallet/marketplace pihak ketiga yang membaca standar ERC-1155).
+- **`SkillCollection.royaltyInfo(tokenId, salePrice)`** (EIP-2981, 5%) —
+  dibaca marketplace sekunder pihak ketiga secara mandiri saat transfer;
+  tidak ada alasan UI TheBingoFi memanggilnya sendiri.
+- **`Marketplace.pricingParams()`** — badge diskon/laris cukup dihitung dari
+  selisih `priceOf` vs `basePrice`, tidak perlu parameter mentahnya.
+- **Semua fungsi write admin** (`createSkill`, `setActive`, `createSale`,
+  `setPricingParams`, `setTreasury`, `setURI`, `setDefaultRoyalty`, `mint`,
+  role management) — operasional platform via `forge script`/explorer, bukan
+  UI. `mint` hanya boleh dipanggil Marketplace (`MINTER_ROLE`).
+- **`withdraw()`** — permissionless (dana hanya bisa mengalir ke `treasury`),
+  dipicu manual saat sweep revenue; belum ada script/cron otomatis.
+- **Transfer sekunder** (`setApprovalForAll`/`safeTransferFrom`) — marketplace
+  P2P antar-user belum masuk scope (lihat `BRIEF.md`).
 
 ## Events untuk Indexer / Server
+
+> **Status saat ini: belum ada indexer/event listener.** Server memakai
+> *live read per request* (`balanceOfBatch` fresh saat `loadout:set`) dan FE
+> me-refresh setelah tx confirm — entitlement selalu akurat tanpa risiko lag
+> indexer. Tabel di bawah adalah rujukan kalau nanti butuh riwayat/analytics
+> (mis. "skill terlaris", notifikasi pembelian di Plaza), bukan deskripsi
+> sesuatu yang sudah berjalan.
 
 | Event | Kontrak | Kegunaan |
 |---|---|---|
