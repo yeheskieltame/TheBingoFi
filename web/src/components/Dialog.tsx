@@ -87,7 +87,7 @@ export default function Dialog({
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -117,16 +117,20 @@ export default function Dialog({
               onClick={onClose}
               aria-label={t.close}
               title={t.close}
-              className="absolute right-4 top-4 z-20 grid size-10 place-items-center rounded-full bg-night/50 text-ice/70 backdrop-blur-sm transition-colors hover:bg-white/15 hover:text-frost focus-visible:bg-white/15 focus-visible:text-frost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-frost/60 active:scale-95"
+              className="absolute right-3 top-3 z-20 grid size-9 place-items-center sm:right-4 sm:top-4 sm:size-10 rounded-full bg-night/50 text-ice/70 backdrop-blur-sm transition-colors hover:bg-white/15 hover:text-frost focus-visible:bg-white/15 focus-visible:text-frost focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-frost/60 active:scale-95"
             >
               <LuX aria-hidden className="size-5" />
             </button>
 
+            {/* Layout split: grid-rows [auto, minmax(0,1fr)] wajib - tanpa baris
+                ber-min-height 0, kolom aksi di mobile tumbuh melewati max-h panel
+                dan bagian bawahnya terpotong (panel `overflow-hidden`) alih-alih
+                ter-scroll. */}
             {split ? (
-              <div className="grid max-h-[88vh] sm:grid-cols-[minmax(0,40%)_minmax(0,1fr)]">
+              <div className="grid max-h-[88vh] grid-rows-[auto_minmax(0,1fr)] sm:grid-cols-[minmax(0,40%)_minmax(0,1fr)] sm:grid-rows-1">
                 {/* Kolom art: penuh tinggi di desktop, strip di mobile supaya
                     kolom aksi tidak terdorong keluar layar. */}
-                <div className="relative h-32 sm:h-auto">
+                <div className="relative h-28 sm:h-auto">
                   <Image
                     src={artImage}
                     alt=""
@@ -140,13 +144,13 @@ export default function Dialog({
                   />
                 </div>
 
-                <div className="space-y-5 overflow-y-auto p-5 pr-14 sm:p-6 sm:pr-14">
+                <div className="min-h-0 space-y-4 overflow-y-auto p-4 pr-4 sm:space-y-5 sm:p-6 sm:pr-14">
                   {header}
                   {children}
                 </div>
               </div>
             ) : (
-              <div className="max-h-[88vh] space-y-4 overflow-y-auto p-5 sm:p-6">
+              <div className="max-h-[88vh] space-y-4 overflow-y-auto p-4 sm:p-6">
                 {header}
                 {children}
               </div>

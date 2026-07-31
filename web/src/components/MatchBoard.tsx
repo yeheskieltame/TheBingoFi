@@ -72,9 +72,12 @@ export default function MatchBoard({ view, playerId, onCall, pending, skillSelec
           gletser + hover naik), target skill (kuning), dan diam (kaca). */}
       <div className="flex flex-col items-center gap-2">
         {canCall && <p className="font-display text-xs font-semibold text-glacier">{t.callHint}</p>}
+        {/* Lebar papan mengikuti lebar tersedia (sel `aspect-square`, bukan
+            `size-*` tetap) - dengan ukuran tetap, 5 sel + gap melebihi layar
+            HP kecil dan papan terpotong. */}
         {view.board && (
-          <div className="rounded-3xl bg-night/40 p-2.5 ring-1 ring-white/10">
-            <div className="grid grid-cols-5 gap-1.5">
+          <div className="w-full max-w-[21rem] rounded-3xl bg-night/40 p-2 ring-1 ring-white/10 sm:max-w-[24rem] sm:p-2.5">
+            <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
               {marks.map(
                 (marked, index) => {
                   const number = view.board![index]!;
@@ -86,7 +89,7 @@ export default function MatchBoard({ view, playerId, onCall, pending, skillSelec
                         type="button"
                         aria-pressed={picked}
                         onClick={() => onSelectSkillCell!(index)}
-                        className={`size-12 rounded-xl font-display text-base font-bold transition-all sm:size-14 sm:text-lg ${
+                        className={`aspect-square w-full rounded-xl font-display text-base font-bold transition-all sm:text-lg ${
                           picked
                             ? "-translate-y-0.5 bg-amber-400 text-glacier-ink shadow-lg shadow-amber-400/30 ring-2 ring-amber-200"
                             : "bg-white/8 text-frost ring-1 ring-amber-300/40 hover:-translate-y-0.5 hover:bg-amber-400/20"
@@ -104,7 +107,7 @@ export default function MatchBoard({ view, playerId, onCall, pending, skillSelec
                       aria-pressed={marked}
                       disabled={!callable}
                       onClick={callable ? () => onCall(number) : undefined}
-                      className={`size-12 rounded-xl font-display text-base font-bold transition-all sm:size-14 sm:text-lg ${
+                      className={`aspect-square w-full rounded-xl font-display text-base font-bold transition-all sm:text-lg ${
                         justMarked(index) ? "animate-daub" : ""
                       } ${
                         marked

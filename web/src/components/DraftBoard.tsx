@@ -42,11 +42,13 @@ export default function DraftBoard({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   return (
-    <div className="flex flex-col items-center gap-3.5">
+    <div className="flex w-full flex-col items-center gap-3.5">
       {/* Panel kaca gelap: bikin papan menonjol dan tetap terbaca di atas
-          background art (/daily), tanpa mengganggu latar polos (/play). */}
-      <div className="rounded-3xl bg-night/40 p-2.5 backdrop-blur-md">
-        <div className="grid grid-cols-5 gap-1.5">
+          background art (/daily), tanpa mengganggu latar polos (/play).
+          Lebarnya mengikuti ruang yang ada (sel `aspect-square`) supaya papan
+          tidak melebihi layar HP kecil. */}
+      <div className="w-full max-w-[20rem] rounded-3xl bg-night/40 p-2 backdrop-blur-md sm:max-w-[21rem] sm:p-2.5">
+        <div className="grid grid-cols-5 gap-1 sm:gap-1.5">
           {numbers.map((number, index) => (
             <button
               key={index}
@@ -71,7 +73,7 @@ export default function DraftBoard({
                 const from = Number(e.dataTransfer.getData("text/plain"));
                 if (Number.isInteger(from)) onSwapCells(from, index);
               }}
-              className={`size-11 cursor-grab rounded-xl font-display text-base font-bold transition-all active:cursor-grabbing sm:size-12 sm:text-lg ${
+              className={`aspect-square w-full cursor-grab rounded-xl font-display text-base font-bold transition-all active:cursor-grabbing sm:text-lg ${
                 selectedIndex === index
                   ? "-translate-y-0.5 bg-frost text-glacier-ink shadow-lg shadow-frost/20 ring-2 ring-frost"
                   : dragOverIndex === index
