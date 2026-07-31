@@ -3,7 +3,7 @@ title: "Economy & Business Model"
 description: "Revenue sources, on-chain dynamic pricing, seeded rarity tiers, and the season model"
 ---
 
-TheBingoFi's entire business model is the sale of Skill and Skin NFTs. There is no other revenue mechanism, and — as covered in [Solution](/solution) — no stake, pot, pool, or token anywhere in the product.
+TheBingoFi's entire business model is the sale of Skill and Skin NFTs. There is no other revenue mechanism, and, as covered in [Solution](/solution), no stake, pot, pool, or token anywhere in the product.
 
 ## Revenue sources
 
@@ -16,13 +16,32 @@ TheBingoFi's entire business model is the sale of Skill and Skin NFTs. There is 
   </Card>
 </CardGroup>
 
+<Frame caption="The in-app marketplace, quoting live priceOf() for each skill.">
+  <img src="/images/market.png" alt="TheBingoFi marketplace screen" />
+</Frame>
+
 ## Dynamic pricing: scarcity ramp + demand decay
 
-Primary sale price is **not a static number** — it's computed on-chain, on every call, from two forces pulling in opposite directions: the closer a skill gets to selling out, the more expensive it gets; the longer a skill goes without a sale, the cheaper it gets. This is implemented in `Marketplace.sol` and is live on GIWA Sepolia today.
+Primary sale price is **not a static number**. It's computed on-chain, on every call, from two forces pulling in opposite directions: the closer a skill gets to selling out, the more expensive it gets; the longer a skill goes without a sale, the cheaper it gets. This is implemented in `Marketplace.sol` and is live on GIWA Sepolia today.
+
+```mermaid
+flowchart LR
+    BP["basePrice"]
+    Minted["minted / maxSupply"]
+    Time["time since lastPurchaseAt"]
+
+    Minted -->|scarcity ramp: more minted, higher premium, capped at +100%| SP["scarcityPremium"]
+    Time -->|demand decay: longer idle, bigger discount, capped at -50%| DB["discountBps"]
+
+    BP --> Final
+    SP --> Final
+    DB --> Final
+    Final["priceOf =<br/>(basePrice + scarcityPremium) * (10000 - discountBps) / 10000"]
+```
 
 ### Scarcity ramp
 
-As more units of a skill are minted, its price ramps up — linearly, reaching the maximum premium exactly when the sale is fully sold out:
+As more units of a skill are minted, its price ramps up linearly, reaching the maximum premium exactly when the sale is fully sold out:
 
 ```
 scarcityPremium = basePrice * scarcityBps * minted / maxSupply / 10000
@@ -32,7 +51,7 @@ With the default global parameter `scarcityBps = 10000`, that means **up to +100
 
 ### Demand decay
 
-If a skill goes untouched, its price steps down over time — capped at a maximum discount, and reset to zero the instant someone buys:
+If a skill goes untouched, its price steps down over time, capped at a maximum discount, and reset to zero the instant someone buys:
 
 ```
 discountBps = min(maxDiscountBps, (block.timestamp - lastPurchaseAt) / decayInterval * decayStepBps)
@@ -46,9 +65,9 @@ Default parameters: `decayInterval = 1 day`, `decayStepBps = 500` (5% per full d
 priceOf(skillId) = (basePrice + scarcityPremium) * (10000 - discountBps) / 10000
 ```
 
-`Marketplace.priceOf(skillId)` is the **only** correct source for a purchase quote — `basePrice` alone is never enough, since real price moves with every mint and with elapsed time. `buy(skillId, amount)` computes `unitPrice` once from state at execution time (not re-priced mid-multi-unit-purchase), and any `msg.value` overpayment is automatically refunded in the same transaction (checks-effects-interactions; if the refund itself fails, the whole transaction reverts, so buyer funds are never stranded).
+`Marketplace.priceOf(skillId)` is the **only** correct source for a purchase quote: `basePrice` alone is never enough, since real price moves with every mint and with elapsed time. `buy(skillId, amount)` computes `unitPrice` once from state at execution time (not re-priced mid-multi-unit-purchase), and any `msg.value` overpayment is automatically refunded in the same transaction (checks-effects-interactions; if the refund itself fails, the whole transaction reverts, so buyer funds are never stranded).
 
-All four parameters above (`scarcityBps`, `decayInterval`, `decayStepBps`, `maxDiscountBps`) are one global set, tunable at any time via `setPricingParams(...)` (admin-only) — **no redeploy required**.
+All four parameters above (`scarcityBps`, `decayInterval`, `decayStepBps`, `maxDiscountBps`) are one global set, tunable at any time via `setPricingParams(...)` (admin-only). **No redeploy required.**
 
 <Note>
   These are the contract's shipped default values. They're a single global set applied to every sale and can be retuned by the platform at any time.
@@ -57,7 +76,7 @@ All four parameters above (`scarcityBps`, `decayInterval`, `decayStepBps`, `maxD
 ### Worked examples (default parameters)
 
 <Tabs>
-  <Tab title="Scarcity — Wild Daub (id 1)">
+  <Tab title="Scarcity: Wild Daub (id 1)">
     `basePrice = 0.0005 ETH`, `maxSupply = 1000`
 
     | Minted | Scarcity premium | `priceOf` |
@@ -66,7 +85,7 @@ All four parameters above (`scarcityBps`, `decayInterval`, `decayStepBps`, `maxD
     | 500 (50% sold) | +50% | 0.00075 ETH |
     | 1000 (sold out) | +100% | 0.001 ETH |
   </Tab>
-  <Tab title="Scarcity — Nullify (id 5, super rare)">
+  <Tab title="Scarcity: Nullify (id 5, super rare)">
     `basePrice = 0.01 ETH`, `maxSupply = 10`
 
     | Minted | Scarcity premium | `priceOf` |
@@ -80,14 +99,14 @@ All four parameters above (`scarcityBps`, `decayInterval`, `decayStepBps`, `maxD
   <Tab title="Demand decay">
     Any skill, 3 full days since the last purchase, `minted = 0` (no scarcity premium in play):
 
-    `discountBps = min(5000, 3 * 500) = 1500` → **15% off** base price.
+    `discountBps = min(5000, 3 * 500) = 1500`, which is **15% off** base price.
 
     For Wild Daub (`basePrice = 0.0005 ETH`): `priceOf = 0.0005 * (10000 - 1500) / 10000 = 0.000425 ETH`.
   </Tab>
 </Tabs>
 
 <Note>
-  `priceOf(skillId)` can still be queried after a sale sells out (useful for a "last price" UI reference) — only `buy()` itself reverts (`SoldOut`) once `minted == maxSupply`.
+  `priceOf(skillId)` can still be queried after a sale sells out (useful for a "last price" UI reference). Only `buy()` itself reverts (`SoldOut`) once `minted == maxSupply`.
 </Note>
 
 ## Rarity tiers (seeded catalog)
@@ -102,15 +121,19 @@ The 5 launch skills were seeded on GIWA Sepolia with deliberately staggered supp
 | 4 | Cell Swap | `CELL_SWAP` | 100 | 0.002 ETH |
 | 5 | Nullify | `NULLIFY` | 10 | 0.01 ETH (super rare) |
 
-Lower max supply pairs with a higher starting base price *and* a faster climb to the full scarcity premium — the two mechanisms reinforce each other for the rarest items.
+Lower max supply pairs with a higher starting base price *and* a faster climb to the full scarcity premium: the two mechanisms reinforce each other for the rarest items.
+
+<Frame caption="Nullify: the rarest launch skill, seeded with a max supply of just 10.">
+  <img src="https://thebingofi.vercel.app/assets/skills/nullify.png" alt="Nullify skill artwork" style={{ maxWidth: "220px", margin: "0 auto" }} />
+</Frame>
 
 ## Season model
 
-Each season, the platform can release a fresh batch of skills through the `SkillFactory` — **`createSkill(SkillDef, maxSupply, price)` is a single transaction** that simultaneously registers the skill's definition in the `SkillRegistry` *and* opens its sale in the `Marketplace`. No new contract deployment, no upgrade, is needed to ship new content each season. See [Smart Contracts](/smart-contracts) for the full release flow.
+Each season, the platform can release a fresh batch of skills through the `SkillFactory`. **`createSkill(SkillDef, maxSupply, price)` is a single transaction** that simultaneously registers the skill's definition in the `SkillRegistry` *and* opens its sale in the `Marketplace`. No new contract deployment, no upgrade, is needed to ship new content each season. See [Smart Contracts](/smart-contracts) for the full release flow.
 
 ## Free-to-play stays competitive
 
-Casual mode carries **no skills at all** — it's identical for every player regardless of wallet or NFT ownership, so a player who never buys anything is never at a competitive disadvantage in that mode. In `standard`-mode rooms, a player who hasn't set a loadout simply plays without skills, same as Casual, rather than being blocked from the room.
+Casual mode carries **no skills at all**. It's identical for every player regardless of wallet or NFT ownership, so a player who never buys anything is never at a competitive disadvantage in that mode. In `standard`-mode rooms, a player who hasn't set a loadout simply plays without skills, same as Casual, rather than being blocked from the room.
 
 <Note>
   The original game design (`CONCEPT.md`) also describes a **non-NFT, non-tradeable "starter" skill loan** to let brand-new players try the skill layer before ever touching a wallet. That mechanism is a design idea, not something implemented in the live server today.
