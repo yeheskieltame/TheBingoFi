@@ -27,3 +27,7 @@ contracts/cache/**/31337/
 
 # vercel
 .vercel/
+
+# mintlify static export (artefak build)
+docs/export.zip
+docs/export/
