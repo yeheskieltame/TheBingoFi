@@ -359,13 +359,15 @@ export interface SkillMetadataAttribute {
  * DIRECTLY (no `{ ok, data }` envelope, unlike every other HTTP endpoint
  * here) since this is what `SkillCollection.uri()` points wallets/
  * marketplaces at (CONCEPT.md §3's "identitas premium" metadata slots).
- * `image`/`animation_url` are placeholder asset URLs - the visual team
- * drops real files at those paths later, no contract/server change needed.
+ * `image` points at the web app's /public/assets/skills (override the host
+ * with ASSET_BASE_URL). `animation_url` is optional and currently omitted:
+ * there are no video assets yet, and pointing wallets at a 404 is worse
+ * than leaving the field out.
  */
 export interface SkillMetadataResponse {
   readonly name: string;
   readonly description: string;
   readonly image: string;
-  readonly animation_url: string;
+  readonly animation_url?: string;
   readonly attributes: readonly SkillMetadataAttribute[];
 }

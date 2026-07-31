@@ -32,8 +32,13 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // -- metadata (GET /metadata/:id.json) -----------------------------------
 
-/** Placeholder asset host - slot for the visual team to drop real files at, no contract/server change needed (CONCEPT.md §3). */
-const METADATA_ASSET_BASE_URL = "https://api.thebingofi.xyz/assets/skills";
+/**
+ * Where skill artwork lives: the web app's /public (CONCEPT.md §3's
+ * "identitas premium" slots). Override with ASSET_BASE_URL when the web app
+ * moves to another domain - the on-chain metadataURI never has to change.
+ */
+const METADATA_ASSET_BASE_URL =
+  process.env.ASSET_BASE_URL ?? "https://thebingofi.vercel.app/assets/skills";
 const METADATA_CACHE_TTL_MS = 5 * 60 * 1000;
 const METADATA_CACHE_CONTROL = "public, max-age=300";
 /** 64 lowercase hex digits, zero-padded - the ERC-1155 metadata URI {id} substitution convention. */
@@ -81,8 +86,9 @@ function skillMetadata(def: SkillDef): SkillMetadataResponse {
   return {
     name: humanizeEffectType(effectType),
     description: EFFECT_DESCRIPTIONS[effectType] ?? "A special skill effect used during a match.",
+    // Belum ada aset video: animation_url sengaja tidak dikirim daripada
+    // menunjuk file yang 404 di wallet/marketplace pihak ketiga.
     image: `${METADATA_ASSET_BASE_URL}/${slug}.png`,
-    animation_url: `${METADATA_ASSET_BASE_URL}/${slug}.webm`,
     attributes: [
       { trait_type: "Effect", value: effectType },
       { trait_type: "Rarity", value: def.rarity },

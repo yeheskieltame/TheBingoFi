@@ -256,8 +256,9 @@ test("GET /metadata/:id.json returns ERC-1155 metadata directly, no {ok,data} en
     const body = (await res.json()) as Record<string, unknown>;
     assert.equal(body.name, "Wild Daub");
     assert.equal(typeof body.description, "string");
-    assert.equal(body.image, "https://api.thebingofi.xyz/assets/skills/wild-daub.png");
-    assert.equal(body.animation_url, "https://api.thebingofi.xyz/assets/skills/wild-daub.webm");
+    assert.equal(body.image, "https://thebingofi.vercel.app/assets/skills/wild-daub.png");
+    // Tidak ada aset video: field-nya sengaja absen, bukan menunjuk URL 404.
+    assert.equal("animation_url" in body, false);
     assert.equal("ok" in body, false);
     assert.equal("data" in body, false);
   });
@@ -271,7 +272,7 @@ test("GET /metadata/:id.json decodes bytes32 hex effectType from the real chain 
     assert.equal(res.status, 200);
     const body = (await res.json()) as { name: string; image: string; attributes: { trait_type: string; value: unknown }[] };
     assert.equal(body.name, "Wild Daub");
-    assert.equal(body.image, "https://api.thebingofi.xyz/assets/skills/wild-daub.png");
+    assert.equal(body.image, "https://thebingofi.vercel.app/assets/skills/wild-daub.png");
     assert.equal(body.attributes.find((a) => a.trait_type === "Effect")?.value, "WILD_DAUB");
   });
 });
