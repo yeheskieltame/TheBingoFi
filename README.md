@@ -95,7 +95,7 @@ pnpm --filter @thebingofi/web dev             # Next.js di :3000
 
 ```bash
 pnpm test:contracts   # forge test (52 test, coverage 100%)
-pnpm test:server      # node --test (217 test: engine, skill, bot, daily, quest, realtime, plaza, http, chain)
+pnpm test:server      # node --test (230 test: engine, skill, bot, daily, quest, realtime, plaza, identity, db, http, chain)
 ```
 
 ## API untuk FE
@@ -127,13 +127,20 @@ URL server Railway (bukan localhost).
 
 Server live: **https://server-production-623e.up.railway.app** (health: `/health`).
 
-Konfigurasi ada di `railway.json` root (start: `pnpm --filter @thebingofi/server start`; Node ≥24 via `server/package.json` engines — dibutuhkan untuk native TS type-stripping). Deploy dilakukan dari **root repo** supaya `contracts/deployments/91342.json` ikut terangkut — chain reader server resolve address dari file itu tanpa env tambahan. Redeploy:
+Konfigurasi ada di `railway.json` root (start: `pnpm --filter @thebingofi/server start`; Node ≥22.18 via `server/package.json` engines — versi minimum yang punya TS type-stripping native secara default). Deploy dilakukan dari **root repo** supaya `contracts/deployments/91342.json` ikut terangkut — chain reader server resolve address dari file itu tanpa env tambahan. Redeploy:
 
 ```bash
 railway up --service server --detach   # butuh railway login + project link
 ```
 
-Catatan production yang tersisa: room/leaderboard/quest/plaza masih in-memory (hilang saat restart/redeploy) — butuh Redis/DB sebelum trafik nyata; RPC masih endpoint publik GIWA (rate-limited).
+**Persistence**: Postgres (service `Postgres` di project yang sama, `DATABASE_URL`
+di-inject otomatis). Yang persist: identitas pemain, quest progress, leaderboard
+harian, chat Plaza. Room/match yang sedang berjalan **sengaja tidak** dipersist
+(durasi menit, terikat socket hidup). Tanpa `DATABASE_URL`, server otomatis
+jalan mode in-memory — jadi test & dev lokal tidak butuh Postgres.
+
+Catatan production yang tersisa: belum ada reconnect grace period (disconnect
+saat match = match dibatalkan); RPC masih endpoint publik GIWA (rate-limited).
 
 ## Deploy Kontrak (GIWA Sepolia)
 
