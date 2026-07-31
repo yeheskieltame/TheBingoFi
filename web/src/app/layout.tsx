@@ -27,7 +27,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "TheBingoFi",
-  description: "Bingo strategis multiplayer. Web2 gameplay, web3 ownership.",
+  description: "Strategic multiplayer bingo. Web2 gameplay, web3 ownership.",
 };
 
 export default function RootLayout({
@@ -37,7 +37,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="id"
+      lang="en"
       className={`${nunito.variable} ${geistMono.variable} ${baloo.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col overflow-x-clip bg-night font-sans text-slate-100">

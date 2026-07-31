@@ -13,15 +13,18 @@ const LOCALE_KEY = "thebingofi:locale";
 type Listener = () => void;
 
 const listeners = new Set<Listener>();
-let current: Locale = "id";
+/** Default "en"; "id" hanya dipakai kalau pemain memilihnya sendiri. */
+const DEFAULT_LOCALE: Locale = "en";
+
+let current: Locale = DEFAULT_LOCALE;
 let initialized = false;
 
 function readStored(): Locale {
-  if (typeof window === "undefined") return "id";
+  if (typeof window === "undefined") return DEFAULT_LOCALE;
   try {
-    return window.localStorage.getItem(LOCALE_KEY) === "en" ? "en" : "id";
+    return window.localStorage.getItem(LOCALE_KEY) === "id" ? "id" : DEFAULT_LOCALE;
   } catch {
-    return "id";
+    return DEFAULT_LOCALE;
   }
 }
 
@@ -31,7 +34,7 @@ function ensureInitialized(): void {
   current = readStored();
 }
 
-/** Current locale - "id" during SSR/before hydration, per readStored above. */
+/** Current locale - DEFAULT_LOCALE during SSR/before hydration, per readStored above. */
 export function getLocale(): Locale {
   ensureInitialized();
   return current;

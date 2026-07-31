@@ -22,12 +22,14 @@ interface ProfilePageProps {
 export async function generateMetadata({ params }: ProfilePageProps): Promise<Metadata> {
   const { address } = await params;
   if (!isAddress(address)) {
-    return { title: "Profil tidak ditemukan · TheBingoFi" };
+    return { title: "Profile not found · TheBingoFi" };
   }
 
+  // Metadata dirender di server tanpa akses locale pemain, jadi pakai bahasa
+  // default aplikasi (EN) — ini juga yang muncul sebagai preview saat di-share.
   const short = truncateAddress(address);
-  const title = `Koleksi ${short} · TheBingoFi`;
-  const description = `Koleksi Skill & Skin NFT ${short} di TheBingoFi. Bingo strategis, web2 gameplay, web3 ownership.`;
+  const title = `${short}'s collection · TheBingoFi`;
+  const description = `${short}'s Skill & Skin NFT collection on TheBingoFi. Strategic bingo — web2 gameplay, web3 ownership.`;
 
   return {
     title,
