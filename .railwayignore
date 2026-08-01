@@ -1,0 +1,12 @@
+# Server deploy hanya butuh server/ + contracts/deployments (chain reader
+# membaca address dari sana). Sisanya cuma memperbesar upload: artwork NFT,
+# background art, dan screenshot dokumentasi berukuran belasan MB dan
+# membuat `railway up` sering timeout.
+web/
+docs/
+assets/
+contracts/abi/
+contracts/src/
+contracts/test/
+contracts/script/
+contracts/lib/
