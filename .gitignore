@@ -31,3 +31,10 @@ contracts/cache/**/31337/
 # mintlify static export (artefak build)
 docs/export.zip
 docs/export/
+
+# dompet dev lokal - JANGAN PERNAH di-commit
+.wallets/
+*.wallets.json
+
+# skrip dev lokal (bot pemain) - jangan di-push
+.local/
