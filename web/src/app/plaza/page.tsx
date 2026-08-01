@@ -8,11 +8,12 @@ import { useLocale } from "@/hooks/useLocale";
 import { useMarketplaceSales } from "@/hooks/useMarketplaceSales";
 import { usePlaza } from "@/hooks/usePlaza";
 import { useSkillCatalog } from "@/hooks/useSkillCatalog";
+import { useSkillMetadata } from "@/hooks/useSkillMetadata";
 import { useSkillOwnership } from "@/hooks/useSkillOwnership";
 import { useWallet } from "@/hooks/useWallet";
 import { strings } from "@/i18n/strings";
 import { tierForMaxSupply, type SkillTier } from "@/lib/skillTier";
-import { getStoredNickname, setStoredNickname } from "@/lib/storage";
+import { getStoredLastBoard, getStoredNickname, setStoredNickname } from "@/lib/storage";
 
 /**
  * Global social feed (CONCEPT.md §7.4b "Plaza") - guest play works fully for
@@ -31,16 +32,25 @@ export default function PlazaPage() {
 
   const [nickname, setNickname] = useState(() => getStoredNickname());
   const [nicknameDraft, setNicknameDraft] = useState(() => getStoredNickname());
+  // Last-played board, if any (lib/storage.ts, saved by /play once a match
+  // finishes - see lib/matchShare.ts) - powers the composer's "lampirkan
+  // Board" option below. Same lazy-useState-from-localStorage pattern as
+  // `nickname` above.
+  const [lastBoard] = useState(() => getStoredLastBoard());
 
   // Catalog is fetched regardless of wallet connection: any post/reply in
   // history may reference a skillId owned by someone ELSE, and rendering
-  // its card (name/tier) needs the catalog either way. Only *which* skills
-  // populate the "attach" dropdown depends on the connected wallet's
-  // ownership (see ownership below).
+  // its card (name/tier/art) needs the catalog either way. Only *which*
+  // skills populate the "attach" dropdown depends on the connected
+  // wallet's ownership (see ownership below).
   const catalog = useSkillCatalog();
   const catalogSkillIds = useMemo(() => catalog.catalog?.map((entry) => entry.skillId) ?? [], [catalog.catalog]);
   const sales = useMarketplaceSales(catalogSkillIds); // maxSupply -> tier, see skillTier() below
   const ownership = useSkillOwnership(wallet.address, catalogSkillIds);
+  // GET /metadata/:id.json per catalog skill - real artwork/name for the
+  // big PlazaSkillAttachment card (CONCEPT.md §7.4b), same source /market
+  // uses (hooks/useSkillMetadata.ts).
+  const metadata = useSkillMetadata(catalogSkillIds);
 
   const effectNames: Record<string, string> = strings[locale].play.skills.effectNames;
   const catalogById = useMemo(
@@ -49,7 +59,10 @@ export default function PlazaPage() {
   );
   const ownedSkills = (catalog.catalog ?? []).filter((entry) => (ownership.balances.get(entry.skillId) ?? 0n) > 0n);
 
+  /** Prefers the off-chain metadata's `name` (same precedence as /market's SkillMarketCard) - falls back to the effectType-derived name, then a bare "Skill #<id>" if the catalog hasn't loaded that id (yet). */
   function skillName(skillId: number): string {
+    const metaName = metadata.metadata.get(skillId)?.name;
+    if (metaName) return metaName;
     const entry = catalogById.get(skillId);
     if (!entry) return `Skill #${skillId}`;
     return effectNames[entry.effectType] ?? entry.effectType;
@@ -58,6 +71,10 @@ export default function PlazaPage() {
   function skillTier(skillId: number): SkillTier | undefined {
     const sale = sales.sales.get(skillId);
     return sale ? tierForMaxSupply(sale.maxSupply) : undefined;
+  }
+
+  function skillImage(skillId: number): string | undefined {
+    return metadata.metadata.get(skillId)?.image;
   }
 
   function handleSaveNickname(event: React.FormEvent<HTMLFormElement>) {
@@ -130,7 +147,8 @@ export default function PlazaPage() {
             placeholder={t.composerPlaceholder}
             submitLabel={t.send}
             sending={plaza.sending}
-            onSubmit={(text, skillId) => plaza.send(nickname, text, skillId)}
+            onSubmit={(text, attachment) => plaza.send(nickname, text, attachment)}
+            removeAttachmentLabel={t.removeAttachment}
             skillPicker={
               ownedSkills.length > 0
                 ? {
@@ -139,7 +157,20 @@ export default function PlazaPage() {
                     options: ownedSkills.map((entry) => ({
                       skillId: entry.skillId,
                       label: `${skillName(entry.skillId)} (#${entry.skillId})`,
+                      name: skillName(entry.skillId),
+                      tier: skillTier(entry.skillId),
+                      imageUrl: skillImage(entry.skillId),
                     })),
+                  }
+                : undefined
+            }
+            boardOption={
+              lastBoard
+                ? {
+                    label: t.attachBoardLabel,
+                    activeLabel: t.attachBoardActive,
+                    numbers: lastBoard.numbers,
+                    marked: lastBoard.marked,
                   }
                 : undefined
             }
@@ -151,9 +182,10 @@ export default function PlazaPage() {
         threads={plaza.threads}
         skillName={skillName}
         skillTier={skillTier}
+        skillImage={skillImage}
         nickname={nickname}
         sending={plaza.sending}
-        onReply={(parentId, text, skillId) => plaza.reply(nickname, text, parentId, skillId)}
+        onReply={(parentId, text, attachment) => plaza.reply(nickname, text, parentId, attachment)}
       />
     </main>
   );

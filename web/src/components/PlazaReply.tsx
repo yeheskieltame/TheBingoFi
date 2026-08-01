@@ -1,7 +1,7 @@
 import type { PlazaMessage } from "@thebingofi/server/protocol";
 
+import PlazaAttachmentCard from "@/components/PlazaAttachmentCard";
 import PlazaAvatar from "@/components/PlazaAvatar";
-import PlazaSkillCard from "@/components/PlazaSkillCard";
 import { useLocale } from "@/hooks/useLocale";
 import { strings } from "@/i18n/strings";
 import { relativeTime } from "@/lib/relativeTime";
@@ -11,6 +11,8 @@ export interface PlazaReplyProps {
   readonly reply: PlazaMessage;
   readonly skillName: (skillId: number) => string;
   readonly skillTier: (skillId: number) => SkillTier | undefined;
+  /** GET /metadata/:id.json's `image` per skillId - see app/plaza/page.tsx's `skillImage`, PlazaAttachmentCard. */
+  readonly skillImage: (skillId: number) => string | undefined;
 }
 
 /**
@@ -18,11 +20,12 @@ export interface PlazaReplyProps {
  * own connector line - the whole thread's vertical "khas X" line is one
  * continuous border owned by the `<ul>` in PlazaPost (see that file), this
  * component just renders the indented content: smaller avatar, nickname,
- * relative time, text, optional skill card. Replies can't themselves be
- * replied to (server-enforced max depth 1, server/src/plaza/plaza.ts), so
- * there's no reply action here.
+ * relative time, text, optional attachment card (skill/result/board, see
+ * PlazaAttachmentCard). Replies can't themselves be replied to
+ * (server-enforced max depth 1, server/src/plaza/plaza.ts), so there's no
+ * reply action here.
  */
-export default function PlazaReply({ reply, skillName, skillTier }: PlazaReplyProps) {
+export default function PlazaReply({ reply, skillName, skillTier, skillImage }: PlazaReplyProps) {
   const locale = useLocale();
   const t = strings[locale].plaza;
 
@@ -43,8 +46,13 @@ export default function PlazaReply({ reply, skillName, skillTier }: PlazaReplyPr
           </span>
         </div>
         <p className="whitespace-pre-wrap break-words text-frost/80">{reply.text}</p>
-        {reply.skillId !== undefined && (
-          <PlazaSkillCard skillId={reply.skillId} name={skillName(reply.skillId)} tier={skillTier(reply.skillId)} />
+        {reply.attachment && (
+          <PlazaAttachmentCard
+            attachment={reply.attachment}
+            skillName={skillName}
+            skillTier={skillTier}
+            skillImage={skillImage}
+          />
         )}
       </div>
     </div>

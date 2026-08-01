@@ -12,6 +12,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { createPlazaStore, PLAZA_HISTORY_LIMIT, PLAZA_RATE_LIMIT_MS } from "./plaza.ts";
+import { BOARD_SIZE } from "../engine/board.ts";
+
+/** 1, 2, ..., 25 - a structurally valid board (same shape draft:submit requires - see engine/board.ts's validateBoard). */
+const VALID_BOARD = Array.from({ length: BOARD_SIZE }, (_, i) => i + 1);
 
 // -- addMessage: happy path -------------------------------------------------
 
@@ -175,6 +179,245 @@ test("addMessage rejects a NEW reply whose parent has already aged out of the ri
     () => plaza.addMessage("late-socket", { nickname: "Bob", text: "too late", replyTo: parent.id }, 999_999),
     /Parent message not found/,
   );
+});
+
+// -- attachments -----------------------------------------------------------
+//
+// Structured `attachment` (see plaza.ts's PlazaAttachment) - the richer
+// successor to bare `skillId`. Three kinds: "skill", "result", "board".
+// Every kind is validated strictly (untrusted chat input, see plaza.ts's
+// top doc) - a rejected attachment rejects the whole message, never stored
+// half-valid.
+
+test("addMessage accepts a 'skill' attachment and returns/stores it as-is", async () => {
+  const plaza = createPlazaStore();
+  const msg = await plaza.addMessage(
+    "s1",
+    { nickname: "Alice", text: "check my skill", attachment: { kind: "skill", skillId: 3 } },
+    1000,
+  );
+  assert.deepEqual(msg.attachment, { kind: "skill", skillId: 3 });
+
+  const history = await plaza.getHistory();
+  assert.deepEqual(history[0]!.attachment, { kind: "skill", skillId: 3 });
+});
+
+test("addMessage accepts a 'result' attachment with all fields, opponent trimmed", async () => {
+  const plaza = createPlazaStore();
+  const msg = await plaza.addMessage(
+    "s1",
+    {
+      nickname: "Alice",
+      text: "gg",
+      attachment: { kind: "result", won: true, lines: 5, calls: 18, opponent: "  Bob  " },
+    },
+    1000,
+  );
+  assert.deepEqual(msg.attachment, { kind: "result", won: true, lines: 5, calls: 18, opponent: "Bob" });
+});
+
+test("addMessage accepts a 'result' attachment without the optional opponent", async () => {
+  const plaza = createPlazaStore();
+  const msg = await plaza.addMessage(
+    "s1",
+    { nickname: "Alice", text: "lost this one", attachment: { kind: "result", won: false, lines: 2, calls: 25 } },
+    1000,
+  );
+  assert.deepEqual(msg.attachment, { kind: "result", won: false, lines: 2, calls: 25 });
+});
+
+test("addMessage accepts a 'board' attachment, numbers only", async () => {
+  const plaza = createPlazaStore();
+  const msg = await plaza.addMessage(
+    "s1",
+    { nickname: "Alice", text: "my board", attachment: { kind: "board", numbers: VALID_BOARD } },
+    1000,
+  );
+  assert.deepEqual(msg.attachment, { kind: "board", numbers: VALID_BOARD });
+});
+
+test("addMessage accepts a 'board' attachment with marked cells", async () => {
+  const plaza = createPlazaStore();
+  const msg = await plaza.addMessage(
+    "s1",
+    {
+      nickname: "Alice",
+      text: "almost bingo",
+      attachment: { kind: "board", numbers: VALID_BOARD, marked: [1, 2, 3, 4, 5] },
+    },
+    1000,
+  );
+  assert.deepEqual(msg.attachment, { kind: "board", numbers: VALID_BOARD, marked: [1, 2, 3, 4, 5] });
+});
+
+test("addMessage rejects a missing/non-object attachment shape", async () => {
+  const plaza = createPlazaStore();
+  for (const bad of ["skill", 123, ["kind"]]) {
+    await assert.rejects(() => plaza.addMessage("s1", { nickname: "Alice", text: "x", attachment: bad }, 1000));
+  }
+});
+
+test("addMessage rejects an attachment.kind outside skill/result/board", async () => {
+  const plaza = createPlazaStore();
+  await assert.rejects(
+    () => plaza.addMessage("s1", { nickname: "Alice", text: "x", attachment: { kind: "nonsense" } }, 1000),
+    /attachment\.kind must be/,
+  );
+});
+
+test("addMessage rejects a 'skill' attachment with a non-positive-integer skillId", async () => {
+  const plaza = createPlazaStore();
+  for (const bad of [0, -1, 1.5, "3"]) {
+    await assert.rejects(() =>
+      plaza.addMessage("s1", { nickname: "Alice", text: "x", attachment: { kind: "skill", skillId: bad } }, 1000),
+    );
+  }
+});
+
+test("addMessage rejects a 'result' attachment with a non-boolean won", async () => {
+  const plaza = createPlazaStore();
+  await assert.rejects(() =>
+    plaza.addMessage(
+      "s1",
+      { nickname: "Alice", text: "x", attachment: { kind: "result", won: "yes", lines: 1, calls: 5 } },
+      1000,
+    ),
+  );
+});
+
+test("addMessage rejects a 'result' attachment with lines out of 0-12 range", async () => {
+  const plaza = createPlazaStore();
+  for (const lines of [-1, 13, 1.5]) {
+    await assert.rejects(() =>
+      plaza.addMessage(
+        "s1",
+        { nickname: "Alice", text: "x", attachment: { kind: "result", won: true, lines, calls: 5 } },
+        1000,
+      ),
+    );
+  }
+});
+
+test("addMessage rejects a 'result' attachment with calls out of 1-25 range", async () => {
+  const plaza = createPlazaStore();
+  for (const calls of [0, 26, 3.5]) {
+    await assert.rejects(() =>
+      plaza.addMessage(
+        "s1",
+        { nickname: "Alice", text: "x", attachment: { kind: "result", won: true, lines: 1, calls } },
+        1000,
+      ),
+    );
+  }
+});
+
+test("addMessage rejects a 'result' attachment with an opponent longer than 24 characters", async () => {
+  const plaza = createPlazaStore();
+  await assert.rejects(() =>
+    plaza.addMessage(
+      "s1",
+      { nickname: "Alice", text: "x", attachment: { kind: "result", won: true, lines: 1, calls: 5, opponent: "x".repeat(25) } },
+      1000,
+    ),
+  );
+});
+
+test("addMessage rejects a 'board' attachment whose numbers is not a valid board", async () => {
+  const plaza = createPlazaStore();
+  // duplicate (24 appears twice, 25 missing) - not a valid board, still 25 entries
+  const invalidBoard = [...VALID_BOARD.slice(0, 24), 24];
+  await assert.rejects(
+    () => plaza.addMessage("s1", { nickname: "Alice", text: "x", attachment: { kind: "board", numbers: invalidBoard } }, 1000),
+    /attachment\.numbers/,
+  );
+});
+
+test("addMessage rejects a 'board' attachment whose numbers is not an array", async () => {
+  const plaza = createPlazaStore();
+  await assert.rejects(() =>
+    plaza.addMessage("s1", { nickname: "Alice", text: "x", attachment: { kind: "board", numbers: "not-an-array" } }, 1000),
+  );
+});
+
+test("addMessage rejects a 'board' attachment with a non-array marked", async () => {
+  const plaza = createPlazaStore();
+  await assert.rejects(() =>
+    plaza.addMessage(
+      "s1",
+      { nickname: "Alice", text: "x", attachment: { kind: "board", numbers: VALID_BOARD, marked: "nope" } },
+      1000,
+    ),
+  );
+});
+
+test("addMessage rejects a 'board' attachment whose marked contains a duplicate", async () => {
+  const plaza = createPlazaStore();
+  await assert.rejects(() =>
+    plaza.addMessage(
+      "s1",
+      { nickname: "Alice", text: "x", attachment: { kind: "board", numbers: VALID_BOARD, marked: [1, 1] } },
+      1000,
+    ),
+  );
+});
+
+test("addMessage rejects a 'board' attachment whose marked contains a value outside 1-25", async () => {
+  const plaza = createPlazaStore();
+  for (const bad of [0, 26, 1.5]) {
+    await assert.rejects(() =>
+      plaza.addMessage(
+        "s1",
+        { nickname: "Alice", text: "x", attachment: { kind: "board", numbers: VALID_BOARD, marked: [bad] } },
+        1000,
+      ),
+    );
+  }
+});
+
+test("addMessage rejects a 'board' attachment whose marked has more than 25 entries", async () => {
+  const plaza = createPlazaStore();
+  const oversized = Array.from({ length: BOARD_SIZE + 1 }, (_, i) => (i % 25) + 1); // 26 entries - rejected on length alone, before even checking duplicates
+  await assert.rejects(() =>
+    plaza.addMessage(
+      "s1",
+      { nickname: "Alice", text: "x", attachment: { kind: "board", numbers: VALID_BOARD, marked: oversized } },
+      1000,
+    ),
+    /at most 25 entries/,
+  );
+});
+
+test("a rejected attachment does not consume the rate-limit slot", async () => {
+  const plaza = createPlazaStore();
+  await assert.rejects(() =>
+    plaza.addMessage("s1", { nickname: "Alice", text: "bad", attachment: { kind: "skill", skillId: -1 } }, 1000),
+  );
+  const ok = await plaza.addMessage("s1", { nickname: "Alice", text: "now valid" }, 1000);
+  assert.equal(ok.text, "now valid");
+});
+
+// -- backward compatibility: legacy skillId -> normalized attachment -------
+
+test("addMessage's return value normalizes a legacy skillId-only send into attachment: { kind: 'skill', skillId }", async () => {
+  const plaza = createPlazaStore();
+  const msg = await plaza.addMessage("s1", { nickname: "Alice", text: "check my skill", skillId: 7 }, 1000);
+  assert.equal(msg.skillId, 7);
+  assert.deepEqual(msg.attachment, { kind: "skill", skillId: 7 });
+});
+
+test("getHistory normalizes a legacy skillId-only message into attachment: { kind: 'skill', skillId }", async () => {
+  const plaza = createPlazaStore();
+  await plaza.addMessage("s1", { nickname: "Alice", text: "check my skill", skillId: 7 }, 1000);
+  const history = await plaza.getHistory();
+  assert.deepEqual(history[0]!.attachment, { kind: "skill", skillId: 7 });
+});
+
+test("a message with neither skillId nor attachment has attachment undefined, on both addMessage's return and getHistory", async () => {
+  const plaza = createPlazaStore();
+  const msg = await plaza.addMessage("s1", { nickname: "Alice", text: "gm" }, 1000);
+  assert.equal(msg.attachment, undefined);
+  const history = await plaza.getHistory();
+  assert.equal(history[0]!.attachment, undefined);
 });
 
 // -- rate limiting -------------------------------------------------------

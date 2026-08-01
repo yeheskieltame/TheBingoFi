@@ -6,9 +6,10 @@
  * seeded catalog (5 skills, maxSupply 10..1000) for the thresholds this
  * mirrors.
  *
- * Shared by /market (SkillMarketCard), /plaza (PlazaSkillCard, skill cards
- * attached to chat messages) and /profile (ProfileSkillCard) so all three
- * surfaces classify the same skillId the same way.
+ * Shared by /market (SkillMarketCard), /plaza (PlazaSkillAttachment, the
+ * `kind: "skill"` card attached to chat messages) and /profile
+ * (ProfileSkillCard) so all three surfaces classify the same skillId the
+ * same way.
  */
 export type SkillTier = "common" | "uncommon" | "rare" | "superRare";
 

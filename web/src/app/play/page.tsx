@@ -15,12 +15,14 @@ import SkillPanel from "@/components/SkillPanel";
 import { useBoardSkins } from "@/hooks/useBoardSkins";
 import { useDraftBoard } from "@/hooks/useDraftBoard";
 import { useLocale } from "@/hooks/useLocale";
+import { usePlazaShare } from "@/hooks/usePlazaShare";
 import { useRoom } from "@/hooks/useRoom";
 import { useSkillCatalog } from "@/hooks/useSkillCatalog";
 import { useSkillOwnership } from "@/hooks/useSkillOwnership";
 import { useWallet } from "@/hooks/useWallet";
 import { strings } from "@/i18n/strings";
-import { getStoredNickname } from "@/lib/storage";
+import { boardAttachmentFrom } from "@/lib/matchShare";
+import { getStoredNickname, setStoredLastBoard } from "@/lib/storage";
 
 const MAX_LOADOUT_SIZE = 2;
 
@@ -41,6 +43,7 @@ function PlayScreen() {
   const draft = useDraftBoard();
   const wallet = useWallet();
   const boardSkins = useBoardSkins();
+  const plazaShare = usePlazaShare();
   const attemptedJoin = useRef(false);
 
   // Quick Match / VS Bot / manual-create entry params (set by "/" - see
@@ -96,6 +99,22 @@ function PlayScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Persists this player's own board (lib/storage.ts's setStoredLastBoard,
+  // via the pure lib/matchShare.ts's boardAttachmentFrom) as soon as a match
+  // finishes - independent of whether "Bagikan ke Plaza" below is ever
+  // clicked, since /plaza's composer "lampirkan Board" option (see
+  // app/plaza/page.tsx) should have data available any time a player has
+  // finished at least one match, not only right after sharing a result.
+  // Re-runs (and simply overwrites with the same/newer data) on every
+  // match:state received while finished, including after "Main Lagi" starts
+  // and finishes a fresh match - a plain localStorage write is cheap enough
+  // that re-saving identical data isn't worth guarding against.
+  useEffect(() => {
+    if (room.phase !== "finished" || !room.state.match) return;
+    const stored = boardAttachmentFrom(room.state.match);
+    if (stored) setStoredLastBoard(stored);
+  }, [room.phase, room.state.match]);
+
   function handleLeave() {
     room.leaveRoom();
     router.push("/");
@@ -128,6 +147,53 @@ function PlayScreen() {
         isPublic: isPublicParam,
       });
     }
+  }
+
+  /**
+   * "Bagikan ke Plaza" (CONCEPT.md §7.4b): builds a `result` PlazaAttachment
+   * from real state already held by this room session (hooks/useRoom.ts's
+   * `state.match`/`state.matchEnded`) - never invented numbers, matching the
+   * task brief. `won`/`lines`/`calls` read straight off the viewer's own
+   * MatchView entry; `opponent` only names someone when it's unambiguous
+   * (the winner when this player lost, or the sole other player in a 1v1
+   * win - omitted for a >2-player win, where "the opponent" isn't a single
+   * person). Navigates to /plaza only after the plaza:send ack succeeds, so
+   * a rate-limit/validation error (hooks/usePlazaShare.ts's `error`) stays
+   * visible on this screen instead of being lost mid-navigation.
+   */
+  function handleShareToPlaza() {
+    const view = room.state.match;
+    const playerId = room.state.playerId;
+    const nickname = getStoredNickname();
+    if (!view || !playerId || !nickname) return;
+
+    const me = view.players.find((player) => player.playerId === playerId);
+    if (!me) return;
+
+    const winnerId = room.state.matchEnded?.winnerId ?? view.winnerId ?? null;
+    const won = winnerId === playerId;
+    const others = view.players.filter((player) => player.playerId !== playerId);
+    const opponent = won
+      ? others.length === 1
+        ? others[0]?.nickname
+        : undefined
+      : (others.find((player) => player.playerId === winnerId)?.nickname ?? others[0]?.nickname);
+
+    plazaShare
+      .shareResult({
+        nickname,
+        text: t.result.shareText,
+        won,
+        lines: me.lineCount,
+        calls: view.calledNumbers.length,
+        opponent,
+      })
+      .then(() => router.push("/plaza"))
+      .catch(() => {
+        // Intentionally ignored here - hooks/usePlazaShare.ts already
+        // captured the error in its own `error` state, surfaced via
+        // MatchResult's `shareError` prop below.
+      });
   }
 
   /** Skill button clicked in SkillPanel: WILD_DAUB/CELL_SWAP need extra board clicks first (see MatchBoard's skillSelection), DOUBLE_CALL/GHOST_CALL cast immediately with no args. */
@@ -284,6 +350,17 @@ function PlayScreen() {
           players={room.state.match?.players ?? room.state.lobby?.players ?? []}
           onBackToLanding={() => router.push("/")}
           onPlayAgain={handlePlayAgain}
+          // Only offered for an organically completed match (a real
+          // winnerId - see handleShareToPlaza's doc) - a cancelled match
+          // (player left/disconnected, no winner) has no honest "menang/
+          // kalah" outcome to share.
+          onShareToPlaza={
+            (room.state.matchEnded?.winnerId ?? room.state.match?.winnerId) && room.state.match && room.state.playerId
+              ? handleShareToPlaza
+              : undefined
+          }
+          sharePending={plazaShare.sharing}
+          shareError={plazaShare.error}
         />
       )}
     </main>

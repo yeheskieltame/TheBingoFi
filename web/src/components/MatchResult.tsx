@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "motion/react";
+import { LuShare2 } from "react-icons/lu";
 
 import BingoLetters from "@/components/BingoLetters";
 import { useLocale } from "@/hooks/useLocale";
@@ -17,6 +18,18 @@ export interface MatchResultProps {
   readonly players: readonly MatchResultPlayer[];
   readonly onBackToLanding: () => void;
   readonly onPlayAgain?: () => void;
+  /**
+   * "Bagikan ke Plaza" (CONCEPT.md §7.4b) - present only when the caller has
+   * real match data to build a `result` PlazaAttachment from (see
+   * app/play/page.tsx's handleShareToPlaza: winnerId must be non-null, i.e.
+   * an organically completed match, not a cancelled one). Omitted entirely
+   * -> no button, same optional-prop pattern as `onPlayAgain`.
+   */
+  readonly onShareToPlaza?: () => void;
+  /** hooks/usePlazaShare.ts's `sharing` - disables the button and swaps its label while the plaza:send ack is in flight. */
+  readonly sharePending?: boolean;
+  /** hooks/usePlazaShare.ts's `error` - shown inline rather than swallowed, same as every other error banner in this app. */
+  readonly shareError?: string | null;
 }
 
 const REASON_KEY: Record<string, "reasonPlayerLeft" | "reasonPlayerDisconnected"> = {
@@ -33,7 +46,16 @@ const REASON_KEY: Record<string, "reasonPlayerLeft" | "reasonPlayerDisconnected"
  * B-I-N-G-O menyala penuh, nama pemenang jadi elemen terbesar. Match yang
  * batal tidak ikut dirayakan - tidak ada yang menang di situ.
  */
-export default function MatchResult({ winnerId, reason, players, onBackToLanding, onPlayAgain }: MatchResultProps) {
+export default function MatchResult({
+  winnerId,
+  reason,
+  players,
+  onBackToLanding,
+  onPlayAgain,
+  onShareToPlaza,
+  sharePending,
+  shareError,
+}: MatchResultProps) {
   const locale = useLocale();
   const t = strings[locale].play.result;
   const winner = winnerId ? players.find((p) => p.playerId === winnerId) : undefined;
@@ -99,7 +121,24 @@ export default function MatchResult({ winnerId, reason, players, onBackToLanding
           >
             {strings[locale].common.back}
           </button>
+          {onShareToPlaza && (
+            <button
+              type="button"
+              onClick={onShareToPlaza}
+              disabled={sharePending}
+              className="inline-flex items-center gap-1.5 rounded-full border border-glacier/50 bg-glacier/10 px-6 py-2.5 font-display text-base font-semibold text-frost transition-colors hover:border-frost/60 hover:bg-glacier/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <LuShare2 aria-hidden className="size-4" />
+              {sharePending ? t.sharingToPlaza : t.shareToPlaza}
+            </button>
+          )}
         </div>
+
+        {shareError && (
+          <p role="alert" className="text-sm text-red-300">
+            {t.shareToPlazaError}: {shareError}
+          </p>
+        )}
       </div>
     </motion.section>
   );

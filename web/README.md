@@ -229,8 +229,17 @@ RPC/deployment lain.
   (**board sendiri = number picker**: klik sel yang belum ter-mark saat
   giliranmu — tidak ada grid 1–25 terpisah; huruf **B-I-N-G-O** per garis
   lengkap, besar untuk diri sendiri + compact per pemain; skill panel,
-  banner Nullify) → finished (+ "Main Lagi" mengulang mode yang sama). Baca
-  `?code=`/`?mode=`/`?quick=`/`?bot=` dari URL. Lihat `hooks/useRoom.ts`.
+  banner Nullify) → finished (+ "Main Lagi" mengulang mode yang sama; +
+  "Bagikan ke Plaza" — hanya muncul untuk match yang selesai organik/ada
+  `winnerId`, kirim `plaza:send` dengan `attachment: {kind:"result", won,
+  lines, calls, opponent?}` dari `MatchView`/`MatchEndedPayload` yang sudah
+  ada di `hooks/useRoom.ts` — bukan angka karangan — lalu redirect ke
+  `/plaza`, lihat `hooks/usePlazaShare.ts`). Board pemain sendiri disimpan
+  ke `lib/storage.ts` (`setStoredLastBoard`, via `lib/matchShare.ts`'s
+  `boardAttachmentFrom`) tiap match selesai, terlepas dari tombol share
+  ditekan atau tidak — itu yang menyuplai opsi "lampirkan Board" di
+  composer `/plaza`. Baca `?code=`/`?mode=`/`?quick=`/`?bot=` dari URL.
+  Lihat `hooks/useRoom.ts`.
 - `/daily` — Daily Challenge: susun board (reuse `DraftBoard`), main, lihat
   skor + share card + leaderboard.
 - `/quests` — katalog quest + progress bar per quest.
@@ -251,12 +260,38 @@ RPC/deployment lain.
   (`lib/plazaThreads.ts`, di-expose `hooks/usePlaza.ts` sebagai `threads`).
   Guest play penuh untuk posting/membalas (nickname dari storage, diminta
   inline kalau kosong — gerbangnya hanya menutup composer, feed tetap
-  kebaca tanpa nickname); wallet connect membuka dropdown "lampirkan skill"
-  (skill yang DIMILIKI) di composer post utama — pesan dengan `skillId`
-  dirender sebagai kartu kecil (nama + tier), klik → `/market`. Balas
-  membuka composer inline di dalam thread (bukan pindah halaman); thread
-  dengan banyak balasan menampilkan 2 teratas + tombol perluas. Rate limit
-  server ditampilkan sebagai error banner.
+  kebaca tanpa nickname).
+
+  **Lampiran** (`attachment: PlazaAttachment`, `@thebingofi/server/protocol`
+  — union `kind: "skill" | "result" | "board"`; server menormalisasi pesan
+  lama ber-`skillId` jadi `attachment: {kind:"skill", skillId}`, jadi klien
+  cukup baca `message.attachment`) dirender sebagai kartu ala Twitter Card
+  lewat `PlazaAttachmentCard` (satu switch per `kind`, dipakai `PlazaPost`
+  dan `PlazaReply`):
+  - **Skill** (`PlazaSkillAttachment`) — kartu besar: artwork asli dari
+    `GET /metadata/:id.json` (`hooks/useSkillMetadata.ts`, lewat
+    `SkillMedia` yang sudah punya fallback inisial), nama, badge tier
+    (`lib/skillTier.ts`), klik → `/market`. Menggantikan `PlazaSkillCard`
+    lama (dihapus).
+  - **Result** (`PlazaResultAttachment`) — status menang/kalah menonjol,
+    garis sebagai huruf B-I-N-G-O (`BingoLetters` varian `compact`), jumlah
+    panggilan, nama lawan kalau ada satu yang jelas.
+  - **Board** (`PlazaBoardAttachment`) — mini board 5×5 dari `numbers` +
+    `marked`, SENGAJA polos tanpa skin artwork: skin milik penulis post,
+    tapi `PlazaMessage` tidak membawa address-nya, jadi tidak ada cara
+    tahu skin apa yang dia punya (lihat komentar di komponennya).
+
+  Composer (`PlazaComposer`) bisa melampirkan salah satu (bukan
+  keduanya — sama seperti wire shape `PlazaAttachment`, satu field): dropdown
+  "Lampirkan skill" (skill yang DIMILIKI wallet, seperti sebelumnya — tanpa
+  wallet, opsi ini tidak muncul) dan tombol toggle "Lampirkan board" (board
+  terakhir pemain dari `lib/storage.ts`, kalau ada — tidak butuh wallet).
+  Memilih salah satu menampilkan pratinjau PERSIS memakai komponen kartu
+  yang sama (WYSIWYG) plus tombol hapus lampiran. Balas membuka composer
+  inline di dalam thread (bukan pindah halaman, dan TANPA menu lampirkan —
+  tetap ringan ala kotak balasan X); thread dengan banyak balasan
+  menampilkan 2 teratas + tombol perluas. Rate limit server ditampilkan
+  sebagai error banner.
 - `/profile/[address]` — profil publik shareable (CONCEPT.md §7.4b):
   validasi address (viem `isAddress`, invalid → 404 lewat `notFound()`),
   koleksi skill on-chain (`balanceOfBatch` seluruh katalog) + tier badge +
@@ -286,20 +321,23 @@ tidak (payload `PlazaMessage` tidak membawa address, lihat server/API.md).
 | `MatchBoard` | `view (MatchView), playerId, onCall, pending, skillSelection?, onSelectSkillCell?, skins?` — board sendiri = number picker; huruf BINGO via `BingoLetters`; `skins` sama seperti `DraftBoard` | `/play` (fase playing) |
 | `BingoLetters` | `count, compact?` (1 garis = B ... 5 = BINGO) | `MatchBoard` |
 | `SkillPanel` | `view (MatchView), viewerPlayerId, pending, selection, resolutions, onActivateSkill, onCancelSelection, onNullify, onPass` | `/play` (fase playing) |
-| `MatchResult` | `winnerId, reason?, players, onBackToLanding, onPlayAgain?` | `/play` (fase finished) |
+| `MatchResult` | `winnerId, reason?, players, onBackToLanding, onPlayAgain?, onShareToPlaza?, sharePending?, shareError?` | `/play` (fase finished) |
 | `QuestNotifications` | `notifications (QuestCompletedPayload[])` | `/play` |
 | `DailyResult` | `number, score, callsToBingo, shareCard, copied, onCopy` | `/daily` |
 | `DailyLeaderboard` | `entries (DailyLeaderboardEntry[])` | `/daily` |
 | `QuestList` | `quests, progress` | `/quests` |
 | `SkillMarketCard` | `entry, sale, currentPrice, priceLoading, metadata, ownedBalance, amount, onAmountChange, walletConnected, buyDisabled, buyStatus, buyError, txHash, onBuy` | `/market` |
 | `SkillMedia` | `imageUrl?, animationUrl?, label` | `SkillMarketCard` — art slot dengan fallback inisial (`onError`) |
-| `SkillTierBadge` | `tier` | `SkillMarketCard`, `PlazaSkillCard`, `ProfileSkillCard` |
-| `PlazaFeed` | `threads (readonly PlazaThread[]), skillName, skillTier, nickname, sending, onReply(parentId, text, skillId?)` | `/plaza` |
-| `PlazaPost` | `post (PlazaMessage), replies (readonly PlazaMessage[]), skillName, skillTier, nickname, sending, onReply(text, skillId?)` | `PlazaFeed` (satu per thread) |
-| `PlazaReply` | `reply (PlazaMessage), skillName, skillTier` | `PlazaPost` (satu per balasan) |
-| `PlazaComposer` | `nickname, placeholder, submitLabel, sending, onSubmit(text, skillId?), skillPicker? { label, noneLabel, options }, compact?, onCancel?, cancelLabel?, autoFocus?` | `/plaza` (composer utama), `PlazaPost` (composer balasan inline, `compact`) |
+| `SkillTierBadge` | `tier` | `SkillMarketCard`, `PlazaSkillAttachment`, `ProfileSkillCard` |
+| `PlazaFeed` | `threads (readonly PlazaThread[]), skillName, skillTier, skillImage, nickname, sending, onReply(parentId, text, attachment?)` | `/plaza` |
+| `PlazaPost` | `post (PlazaMessage), replies (readonly PlazaMessage[]), skillName, skillTier, skillImage, nickname, sending, onReply(text, attachment?)` | `PlazaFeed` (satu per thread) |
+| `PlazaReply` | `reply (PlazaMessage), skillName, skillTier, skillImage` | `PlazaPost` (satu per balasan) |
+| `PlazaComposer` | `nickname, placeholder, submitLabel, sending, onSubmit(text, attachment?), skillPicker? { label, noneLabel, options: {skillId, label, name, imageUrl?, tier?}[] }, boardOption? { label, activeLabel, numbers, marked }, removeAttachmentLabel?, compact?, onCancel?, cancelLabel?, autoFocus?` | `/plaza` (composer utama, dengan `skillPicker`/`boardOption`), `PlazaPost` (composer balasan inline, `compact`, tanpa menu lampirkan) |
 | `PlazaAvatar` | `nickname, className?` (ukuran/text-size lewat class, warna dari `lib/avatarTint.ts`) | `PlazaComposer`, `PlazaPost`, `PlazaReply` |
-| `PlazaSkillCard` | `skillId, name, tier` | `PlazaPost`, `PlazaReply` (pesan dengan `skillId`) |
+| `PlazaAttachmentCard` | `attachment (PlazaAttachment), skillName, skillTier, skillImage` — satu switch per `kind` | `PlazaPost`, `PlazaReply` (pesan/balasan dengan `attachment`) |
+| `PlazaSkillAttachment` | `skillId, name, imageUrl?, tier?` — kartu besar, artwork asli lewat `SkillMedia` | `PlazaAttachmentCard`, `PlazaComposer` (pratinjau) |
+| `PlazaResultAttachment` | `won, lines, calls, opponent?` | `PlazaAttachmentCard` |
+| `PlazaBoardAttachment` | `numbers, marked?` — mini board 5×5, sengaja tanpa skin (lihat komentar di komponen) | `PlazaAttachmentCard`, `PlazaComposer` (pratinjau) |
 | `ProfileView` | `address` | `app/profile/[address]/page.tsx` (Client Component body) |
 | `ProfileSkillCard` | `entry, balance, tier` | `ProfileView` |
 

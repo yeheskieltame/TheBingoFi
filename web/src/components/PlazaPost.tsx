@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { PlazaMessage } from "@thebingofi/server/protocol";
+import type { PlazaAttachment, PlazaMessage } from "@thebingofi/server/protocol";
 import { LuMessageCircle } from "react-icons/lu";
 
+import PlazaAttachmentCard from "@/components/PlazaAttachmentCard";
 import PlazaAvatar from "@/components/PlazaAvatar";
 import PlazaComposer from "@/components/PlazaComposer";
 import PlazaReply from "@/components/PlazaReply";
-import PlazaSkillCard from "@/components/PlazaSkillCard";
 import { useLocale } from "@/hooks/useLocale";
 import { strings } from "@/i18n/strings";
 import { relativeTime } from "@/lib/relativeTime";
@@ -22,22 +22,36 @@ export interface PlazaPostProps {
   readonly replies: readonly PlazaMessage[];
   readonly skillName: (skillId: number) => string;
   readonly skillTier: (skillId: number) => SkillTier | undefined;
+  /** GET /metadata/:id.json's `image` per skillId - see app/plaza/page.tsx's `skillImage`, PlazaAttachmentCard. */
+  readonly skillImage: (skillId: number) => string | undefined;
   /** Current visitor's nickname - empty string when none is set yet (guest who hasn't filled the field, see app/plaza/page.tsx point 4: the feed itself still renders, only composing is gated). */
   readonly nickname: string;
   /** hooks/usePlaza.ts's `sending` - passed through to the inline reply composer. */
   readonly sending: boolean;
-  /** Fires with the reply's (trimmed text, skillId?) - the caller already knows which post this is (closed over `post.id` in app/plaza/page.tsx) and calls usePlaza's `reply`. */
-  readonly onReply: (text: string, skillId?: number) => void;
+  /** Fires with the reply's (trimmed text, attachment?) - the caller already knows which post this is (closed over `post.id` in app/plaza/page.tsx) and calls usePlaza's `reply`. */
+  readonly onReply: (text: string, attachment?: PlazaAttachment) => void;
 }
 
 /**
  * One top-level Plaza post card (CONCEPT.md §7.4b) - X-style: avatar,
- * nickname, relative time, text, optional skill card, then a "Balas" action
- * row with the reply count. Clicking Balas opens an inline PlazaComposer
- * (no navigation) rather than a separate page - replies render below,
- * indented with a single continuous connector line down the whole thread.
+ * nickname, relative time, text, optional attachment card (skill/result/
+ * board, see PlazaAttachmentCard), then a "Balas" action row with the reply
+ * count. Clicking Balas opens an inline PlazaComposer (no navigation)
+ * rather than a separate page - replies render below, indented with a
+ * single continuous connector line down the whole thread. The inline reply
+ * composer never gets an attach menu (see PlazaComposer's doc) - only the
+ * top-of-feed composer can attach.
  */
-export default function PlazaPost({ post, replies, skillName, skillTier, nickname, sending, onReply }: PlazaPostProps) {
+export default function PlazaPost({
+  post,
+  replies,
+  skillName,
+  skillTier,
+  skillImage,
+  nickname,
+  sending,
+  onReply,
+}: PlazaPostProps) {
   const locale = useLocale();
   const t = strings[locale].plaza;
   const [replying, setReplying] = useState(false);
@@ -46,8 +60,8 @@ export default function PlazaPost({ post, replies, skillName, skillTier, nicknam
   const visibleReplies = expanded ? replies : replies.slice(0, VISIBLE_REPLIES);
   const hiddenCount = replies.length - visibleReplies.length;
 
-  function handleReplySubmit(text: string, skillId?: number) {
-    onReply(text, skillId);
+  function handleReplySubmit(text: string, attachment?: PlazaAttachment) {
+    onReply(text, attachment);
     setReplying(false);
   }
 
@@ -72,8 +86,13 @@ export default function PlazaPost({ post, replies, skillName, skillTier, nicknam
 
           <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-frost/85">{post.text}</p>
 
-          {post.skillId !== undefined && (
-            <PlazaSkillCard skillId={post.skillId} name={skillName(post.skillId)} tier={skillTier(post.skillId)} />
+          {post.attachment && (
+            <PlazaAttachmentCard
+              attachment={post.attachment}
+              skillName={skillName}
+              skillTier={skillTier}
+              skillImage={skillImage}
+            />
           )}
 
           <div className="mt-3 flex items-center gap-4 text-xs text-ice/50">
@@ -111,7 +130,7 @@ export default function PlazaPost({ post, replies, skillName, skillTier, nicknam
           {visibleReplies.length > 0 && (
             <ul className="mt-3 space-y-3 border-l border-white/10 pl-3.5">
               {visibleReplies.map((reply) => (
-                <PlazaReply key={reply.id} reply={reply} skillName={skillName} skillTier={skillTier} />
+                <PlazaReply key={reply.id} reply={reply} skillName={skillName} skillTier={skillTier} skillImage={skillImage} />
               ))}
             </ul>
           )}

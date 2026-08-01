@@ -196,4 +196,75 @@ test("db.test.ts setup", { skip }, async (t) => {
       /Parent message not found/,
     );
   });
+
+  await t.test("plaza: a structured attachment (jsonb) round-trips through Postgres for every kind", async () => {
+    const store = createPlazaStore(pool);
+
+    const skillMsg = await store.addMessage(
+      "socket-skill",
+      { nickname: "Alice", text: "check my skill", attachment: { kind: "skill", skillId: 3 } },
+      50_000,
+    );
+    const resultMsg = await store.addMessage(
+      "socket-result",
+      { nickname: "Bob", text: "gg", attachment: { kind: "result", won: true, lines: 5, calls: 18, opponent: "Alice" } },
+      51_000,
+    );
+    const boardMsg = await store.addMessage(
+      "socket-board",
+      {
+        nickname: "Carol",
+        text: "my board",
+        attachment: { kind: "board", numbers: Array.from({ length: 25 }, (_, i) => i + 1), marked: [1, 2, 3] },
+      },
+      52_000,
+    );
+
+    // The jsonb column itself, read back raw - proves storage, not just this
+    // process's in-memory return value.
+    const rows = await pool!.query<{ id: string; attachment: unknown }>(
+      `SELECT id, attachment FROM plaza_messages WHERE id = ANY($1::uuid[])`,
+      [[skillMsg.id, resultMsg.id, boardMsg.id]],
+    );
+    const byId = new Map(rows.rows.map((r) => [r.id, r.attachment]));
+    assert.deepEqual(byId.get(skillMsg.id), { kind: "skill", skillId: 3 });
+    assert.deepEqual(byId.get(resultMsg.id), { kind: "result", won: true, lines: 5, calls: 18, opponent: "Alice" });
+    assert.deepEqual(byId.get(boardMsg.id), {
+      kind: "board",
+      numbers: Array.from({ length: 25 }, (_, i) => i + 1),
+      marked: [1, 2, 3],
+    });
+
+    // A FRESH store instance (same pool) reading via getHistory sees the
+    // same attachments, unchanged - proves the read path (rowToMessage),
+    // not just raw SQL.
+    const freshStore = createPlazaStore(pool);
+    const history = await freshStore.getHistory();
+    const historyById = new Map(history.map((m) => [m.id, m.attachment]));
+    assert.deepEqual(historyById.get(skillMsg.id), { kind: "skill", skillId: 3 });
+    assert.deepEqual(historyById.get(resultMsg.id), { kind: "result", won: true, lines: 5, calls: 18, opponent: "Alice" });
+    assert.deepEqual(historyById.get(boardMsg.id), {
+      kind: "board",
+      numbers: Array.from({ length: 25 }, (_, i) => i + 1),
+      marked: [1, 2, 3],
+    });
+  });
+
+  await t.test("plaza: a pre-existing row with skill_id but no attachment (legacy data) is normalized on read", async () => {
+    // Simulates a row written by the OLD code, before the `attachment`
+    // column existed - inserted directly via SQL, bypassing addMessage
+    // entirely, so it genuinely has attachment NULL.
+    const id = "11111111-1111-1111-1111-111111111111";
+    await pool!.query(
+      `INSERT INTO plaza_messages (id, nickname, text, skill_id, created_at) VALUES ($1, $2, $3, $4, now())`,
+      [id, "LegacyAlice", "legacy skill flex", 9],
+    );
+
+    const store = createPlazaStore(pool);
+    const history = await store.getHistory();
+    const legacy = history.find((m) => m.id === id);
+    assert.ok(legacy, "expected the directly-inserted legacy row to appear in history");
+    assert.equal(legacy!.skillId, 9);
+    assert.deepEqual(legacy!.attachment, { kind: "skill", skillId: 9 }, "legacy skill_id-only row must be normalized into attachment on read");
+  });
 });

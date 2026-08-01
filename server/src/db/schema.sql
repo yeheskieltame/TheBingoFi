@@ -61,3 +61,14 @@ CREATE INDEX IF NOT EXISTS plaza_messages_created_at_idx ON plaza_messages (crea
 -- allowed to point at nothing (e.g. the in-memory ring buffer evicted it) -
 -- see this column's doc in plaza.ts for why that's fine, not a bug.
 ALTER TABLE plaza_messages ADD COLUMN IF NOT EXISTS reply_to uuid;
+
+-- attachment: structured showcase attachment (skill card / match result
+-- card / board snapshot - see plaza/plaza.ts's PlazaAttachment), nullable,
+-- stored exactly as validated. Same ADD COLUMN IF NOT EXISTS pattern as
+-- reply_to above (added after plaza_messages already existed in
+-- production) - idempotent, no DROP/RECREATE, safe on a database that
+-- already has real messages in it. A row written before this column
+-- existed simply has attachment NULL - plaza.ts's withNormalizedAttachment
+-- synthesizes an equivalent `{ kind: "skill", skillId }` from the legacy
+-- skill_id column on read, so old rows keep displaying correctly.
+ALTER TABLE plaza_messages ADD COLUMN IF NOT EXISTS attachment jsonb;

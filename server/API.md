@@ -84,7 +84,7 @@ socket.emit("room:create", { nickname: "Alice" }, (res) => {
 | `loadout:set` | `{ skillIds: number[] }` | `{ view: LobbyView }` | Set loadout (0-2 skill id unik) — hanya room `mode: "standard"`, fase `lobby`/`draft`, wajib sudah `wallet:link` (lihat "Mode room & Loadout" di bawah). |
 | `skill:use` | `{ effectType: string, args?: { cellIndex?: number, a?: number, b?: number } }` | `{ view: MatchView }` | Pakai 1 skill dari loadout sendiri saat giliran sendiri. Lihat "Skill in-match" di bawah. |
 | `skill:respond` | `{ nullify: boolean }` | `{ view: MatchView }` | Jawab window Nullify (`true` = batalkan skill lawan, `false` = biarkan). Lihat "Skill in-match" di bawah. |
-| `plaza:send` | `{ nickname: string, text: string, skillId?: number, replyTo?: string }` | `{ message: PlazaMessage }` | Kirim pesan ke Plaza (chat sosial GLOBAL, bukan per room) — jalan tanpa join room/wallet sama sekali (guest play). `replyTo` opsional = id pesan induk untuk membalas (maks kedalaman 1 level). Lihat "Plaza chat" di bawah. |
+| `plaza:send` | `{ nickname: string, text: string, skillId?: number, replyTo?: string, attachment?: PlazaAttachment }` | `{ message: PlazaMessage }` | Kirim pesan ke Plaza (chat sosial GLOBAL, bukan per room) — jalan tanpa join room/wallet sama sekali (guest play). `replyTo` opsional = id pesan induk untuk membalas (maks kedalaman 1 level). `attachment` opsional = lampiran terstruktur (kartu skill/hasil match/board) — `skillId` LAMA tetap diterima juga. Lihat "Plaza chat" di bawah. |
 | `plaza:history` | `{}` | `{ messages: PlazaMessage[] }` | Ambil buffer riwayat Plaza (maks 300 pesan terakhir, urut lama→baru, post DAN balasan tercampur flat — client yang mengelompokkan jadi thread). Lihat "Plaza chat" di bawah. |
 
 ### Tabel event: server → client
@@ -545,30 +545,40 @@ interface PlazaMessage {
   id: string;
   nickname: string;
   text: string;
-  skillId?: number;   // skill yang dipamerkan (FE render sebagai kartu, bukan teks) — lihat di bawah
-  replyTo?: string;    // id pesan induk yang dibalas — absen berarti ini POST utama, lihat "Balasan" di bawah
-  at: number;          // Date.now() saat pesan disimpan server
+  skillId?: number;             // LEGACY — lihat "Lampiran terstruktur (attachment)" di bawah
+  replyTo?: string;              // id pesan induk yang dibalas — absen berarti ini POST utama, lihat "Balasan" di bawah
+  at: number;                    // Date.now() saat pesan disimpan server
+  attachment?: PlazaAttachment;  // lampiran terstruktur — lihat di bawah
 }
+
+type PlazaAttachment =
+  | { kind: "skill"; skillId: number }
+  | { kind: "result"; won: boolean; lines: number; calls: number; opponent?: string }
+  | { kind: "board"; numbers: number[]; marked?: number[] };
 ```
 
-- **`plaza:send { nickname, text, skillId?, replyTo? }`** — server yang
-  mengisi `id`/`at` (client tidak bisa memalsukannya). Validasi (di
-  `server/src/plaza/plaza.ts`, pure & unit-tested terpisah dari socket):
+- **`plaza:send { nickname, text, skillId?, replyTo?, attachment? }`** —
+  server yang mengisi `id`/`at` (client tidak bisa memalsukannya). Validasi
+  (di `server/src/plaza/plaza.ts`, pure & unit-tested terpisah dari socket):
   - `nickname`: 1-24 karakter setelah `trim()`.
   - `text`: 1-280 karakter setelah `trim()`.
-  - `skillId` (opsional): integer ≥ 1. **Tidak** diverifikasi kepemilikan
-    di sisi server saat ini — ini murni sinyal "pamer/promosi kartu skill"
-    (CONCEPT.md §7.4b: "jual Wild Daub rare, cek profilku"), FE yang
-    merender kartunya; verifikasi ownership sungguhan menyusul bareng
-    marketplace P2P.
+  - `skillId` (opsional, **LEGACY** — lihat "Lampiran terstruktur" di
+    bawah): integer ≥ 1. **Tidak** diverifikasi kepemilikan di sisi server
+    saat ini — ini murni sinyal "pamer/promosi kartu skill" (CONCEPT.md
+    §7.4b: "jual Wild Daub rare, cek profilku"), FE yang merender kartunya;
+    verifikasi ownership sungguhan menyusul bareng marketplace P2P.
+  - `attachment` (opsional — lihat "Lampiran terstruktur" di bawah untuk
+    aturan lengkap tiap `kind`).
   - `replyTo` (opsional, lihat "Balasan" di bawah): id pesan yang masih ADA
     di store saat ini, dan pesan itu sendiri bukan balasan (maks kedalaman
     1 level).
   - **Rate limit**: minimal 2000ms antar pesan dari socket yang sama
     (per `socket.id`, bukan per nickname/wallet) — berlaku SAMA untuk post
     maupun balasan. Pesan yang ditolak karena payload invalid (termasuk
-    `replyTo` yang tidak valid) TIDAK memakan slot rate limit (masih boleh
-    langsung coba lagi dengan payload yang benar).
+    `replyTo` **dan** `attachment` yang tidak valid) TIDAK memakan slot rate
+    limit (masih boleh langsung coba lagi dengan payload yang benar) —
+    validasi `attachment` dijalankan SEBELUM jam rate limit disentuh, pola
+    yang sama dengan `replyTo`.
   - Gagal validasi ATAU kena rate limit → ack `{ ok: false, error }` dengan
     pesan jelas, mis.:
     - `"Rate limited - tunggu 1230ms lagi sebelum kirim pesan lagi"`
@@ -577,6 +587,9 @@ interface PlazaMessage {
       lihat "Balasan" di bawah).
     - `"Cannot reply to a reply - max thread depth is 1"` — `replyTo`
       menunjuk pesan yang itu sendiri sudah punya `replyTo`.
+    - Pesan validasi `attachment` — lihat daftar lengkap di "Lampiran
+      terstruktur" di bawah, mis. `"attachment.kind must be \"skill\",
+      \"result\", or \"board\""`.
   - Sukses → ack `{ message: PlazaMessage }`, lalu `plaza:message` di-
     broadcast (`io.emit`, **bukan** ke satu room) ke SEMUA socket yang
     sedang connect, termasuk pengirim sendiri. Selalu satu `PlazaMessage`
@@ -587,6 +600,54 @@ interface PlazaMessage {
   balasan di bawah post induknya jadi thread; server tidak pernah
   mengelompokkan. Berguna untuk mengisi riwayat chat begitu client baru
   connect/buka Plaza.
+
+#### Lampiran terstruktur (attachment)
+
+`attachment` (opsional, `PlazaAttachment` — lihat tipe di atas) adalah
+suksesor yang lebih kaya dari `skillId` polos, untuk tiga kasus "showcase"
+CONCEPT.md §7.4b: pamer kartu skill, pamer hasil match, dan pamer board.
+Ini input dari user (chat message) — divalidasi KETAT per `kind`, dan GAGAL
+sepenuhnya (bukan disimpan setengah valid) kalau ada satu field yang tidak
+lolos:
+
+| `kind` | Field | Aturan validasi |
+|---|---|---|
+| `"skill"` | `skillId: number` | Integer ≥ 1 (sama seperti `skillId` legacy di atas). |
+| `"result"` | `won: boolean`<br>`lines: number`<br>`calls: number`<br>`opponent?: string` | `won` boolean wajib. `lines` integer 0-12 (maks garis yang mungkin selesai sekaligus di board 5×5 — 5 baris + 5 kolom + 2 diagonal). `calls` integer 1-25. `opponent` opsional, di-`trim()`, maks 24 karakter. |
+| `"board"` | `numbers: number[]`<br>`marked?: number[]` | `numbers` WAJIB board valid — dicek dengan fungsi `validateBoard` YANG SAMA dipakai `draft:submit` (25 angka unik 1-25, row-major). `marked` opsional: array integer 1-25, unik, **maks 25 elemen** (array yang lebih panjang ditolak berdasarkan panjangnya saja, sebelum sempat divalidasi isinya — supaya payload raksasa tidak pernah diproses). |
+
+`kind` di luar tiga nilai ini (atau `attachment` yang bukan object) ditolak
+dengan pesan jelas (`'attachment.kind must be "skill", "result", or
+"board"'` / `"attachment must be an object"`).
+
+**Kompatibilitas mundur dengan `skillId` lama**: field `skillId` top-level
+TETAP diterima dan disimpan seperti sebelumnya (tidak berubah). Tapi setiap
+kali server MENGEMBALIKAN sebuah pesan (`plaza:history`, dan
+`plaza:message`/ack `plaza:send` — keduanya berasal dari nilai balik
+`addMessage` yang sama) — kalau pesan itu punya `skillId` tapi TIDAK punya
+`attachment`, server otomatis menyisipkan
+`attachment: { kind: "skill", skillId }` hasil normalisasi. Efeknya: client
+HANYA PERNAH perlu merender satu field (`attachment`), tidak pernah perlu
+cabang render terpisah untuk `skillId` lama — berlaku juga untuk pesan LAMA
+yang sudah ada di Postgres dari sebelum fitur ini ada (lihat "Persistence"
+§5 di bawah).
+
+```ts
+// kirim dengan attachment terstruktur
+socket.emit(
+  "plaza:send",
+  { nickname: "Alice", text: "menang beruntun!", attachment: { kind: "result", won: true, lines: 5, calls: 14, opponent: "Bob" } },
+  (res) => {
+    if (!res.ok) return console.error(res.error);
+  },
+);
+
+// masih bisa pakai skillId lama — attachment ternormalisasi otomatis saat dibaca balik
+socket.emit("plaza:send", { nickname: "Alice", text: "jual Wild Daub rare", skillId: 7 }, (res) => {
+  if (!res.ok) return;
+  // res.message.attachment === { kind: "skill", skillId: 7 } — sudah dinormalisasi
+});
+```
 
 #### Balasan (comment)
 
@@ -623,7 +684,10 @@ socket.emit(
 
 ```ts
 socket.on("plaza:message", (msg) => {
-  // render 1 baris chat; kalau msg.skillId ada, render kartu skill-nya;
+  // render 1 baris chat; kalau msg.attachment ada, render kartunya sesuai
+  // kind (skill/result/board) — msg.skillId sudah ternormalisasi ke
+  // attachment kalau ada, jadi cukup cek attachment saja, tidak perlu cek
+  // skillId terpisah (lihat "Lampiran terstruktur (attachment)" di atas);
   // kalau msg.replyTo ada, render sebagai balasan (atau post biasa kalau
   // induknya tidak ditemukan di state client)
 });
@@ -1006,8 +1070,8 @@ quest_progress (player_id uuid REFERENCES players(id), quest_id text,
 daily_scores (date text, player_id uuid, nickname text, score int,
               calls_to_bingo int, PRIMARY KEY (date, player_id))
 plaza_messages (id uuid PK, player_id uuid NULL, nickname text, text text,
-                 skill_id int NULL, reply_to uuid NULL, created_at timestamptz,
-                 index (created_at DESC))
+                 skill_id int NULL, reply_to uuid NULL, attachment jsonb NULL,
+                 created_at timestamptz, index (created_at DESC))
 ```
 
 Detail lengkap + komentar ada di `server/src/db/schema.sql`. Catatan
@@ -1038,6 +1102,16 @@ penting per tabel:
   Tanpa FK karena existensi induk + aturan kedalaman maksimal 1 level
   divalidasi di kode aplikasi (`plaza/plaza.ts`'s `addMessage`), bukan
   constraint database.
+- `plaza_messages.attachment` (`jsonb`, nullable) — lampiran terstruktur
+  (lihat "Lampiran terstruktur (attachment)" di §1's "Plaza chat"), sama
+  polanya dengan `reply_to`: ditambahkan lewat `ALTER TABLE ... ADD COLUMN
+  IF NOT EXISTS` (idempoten, aman untuk database produksi yang sudah
+  berisi data — tidak pernah drop/recreate). Disimpan APA ADANYA (objek
+  `PlazaAttachment` yang sudah divalidasi, `pg` men-serialize/parse-nya
+  otomatis ke/dari jsonb, tanpa `JSON.stringify`/`JSON.parse` manual). Baris
+  LAMA (dari sebelum kolom ini ada) punya `attachment` NULL — tetap tampil
+  benar karena `plaza/plaza.ts`'s `withNormalizedAttachment` mensintesis
+  `{ kind: "skill", skillId }` dari kolom `skill_id` lama saat dibaca.
 
 ### Test Postgres (opt-in)
 

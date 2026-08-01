@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
-import type { PlazaMessage } from "@thebingofi/server/protocol";
+import type { PlazaAttachment, PlazaMessage } from "@thebingofi/server/protocol";
 
 import { ensureIdentity } from "@/lib/identity";
 import { groupPlazaThreads, type PlazaThread } from "@/lib/plazaThreads";
@@ -81,9 +81,9 @@ export function usePlaza() {
     };
   }, []);
 
-  const send = useCallback((nickname: string, text: string, skillId?: number) => {
+  const send = useCallback((nickname: string, text: string, attachment?: PlazaAttachment) => {
     dispatch({ type: "sending", value: true });
-    socketRef.current.emit("plaza:send", { nickname, text, skillId }, (res) => {
+    socketRef.current.emit("plaza:send", { nickname, text, attachment }, (res) => {
       dispatch({ type: "sending", value: false });
       if (!res.ok) {
         dispatch({ type: "error", message: res.error });
@@ -97,9 +97,9 @@ export function usePlaza() {
    * (a reply can't itself be replied to) and that the parent currently
    * exists, surfaced back through the same ack-error path as `send`.
    */
-  const reply = useCallback((nickname: string, text: string, parentId: string, skillId?: number) => {
+  const reply = useCallback((nickname: string, text: string, parentId: string, attachment?: PlazaAttachment) => {
     dispatch({ type: "sending", value: true });
-    socketRef.current.emit("plaza:send", { nickname, text, skillId, replyTo: parentId }, (res) => {
+    socketRef.current.emit("plaza:send", { nickname, text, attachment, replyTo: parentId }, (res) => {
       dispatch({ type: "sending", value: false });
       if (!res.ok) {
         dispatch({ type: "error", message: res.error });

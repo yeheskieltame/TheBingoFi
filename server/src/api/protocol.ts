@@ -21,7 +21,7 @@
 
 import type { LobbyView, MatchView, RoomSummary } from "../realtime/views.ts";
 import type { SkillArgs } from "../engine/match.ts";
-import type { PlazaMessage } from "../plaza/plaza.ts";
+import type { PlazaAttachment, PlazaMessage } from "../plaza/plaza.ts";
 
 export type {
   LobbyPlayerView,
@@ -32,7 +32,7 @@ export type {
   PendingSkillView,
   RoomSummary,
 } from "../realtime/views.ts";
-export type { PlazaMessage } from "../plaza/plaza.ts";
+export type { PlazaAttachment, PlazaMessage } from "../plaza/plaza.ts";
 
 /**
  * Every client->server event acks with this shape: a definite
@@ -165,18 +165,23 @@ export interface SkillRespondPayload {
  * to any room (works for guests too, no room/wallet required). `skillId`
  * optionally attaches a skill the sender owns so FE can render it as a
  * card ("pamer skill") - ownership itself is never checked here, only
- * shape (see plaza/plaza.ts's validateSkillId). `replyTo` optionally marks
- * this message as a reply to an existing message's id - max depth 1 (a
- * reply itself cannot be replied to) and the parent must currently exist
- * in the store, or the ack comes back `{ ok: false }` (see
- * plaza/plaza.ts's addMessage). See server/API.md's "Plaza chat" section
- * for validation rules, rate limit, and the reply rules.
+ * shape (see plaza/plaza.ts's validateSkillId). `skillId` is a LEGACY
+ * field, still fully accepted - `attachment` is the richer successor
+ * (skill card / match result card / board snapshot, see PlazaAttachment),
+ * strictly shape-validated per `kind` (see plaza/plaza.ts's
+ * validateAttachment). `replyTo` optionally marks this message as a reply
+ * to an existing message's id - max depth 1 (a reply itself cannot be
+ * replied to) and the parent must currently exist in the store, or the ack
+ * comes back `{ ok: false }` (see plaza/plaza.ts's addMessage). See
+ * server/API.md's "Plaza chat" section for validation rules, rate limit,
+ * and the reply rules.
  */
 export interface PlazaSendPayload {
   readonly nickname: string;
   readonly text: string;
   readonly skillId?: number;
   readonly replyTo?: string;
+  readonly attachment?: PlazaAttachment;
 }
 
 // -- client -> server ack data ----------------------------------------------

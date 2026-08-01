@@ -8,8 +8,8 @@ export interface SkillTierBadgeProps {
 
 /**
  * Small colored label naming a skill's scarcity tier (see lib/skillTier.ts).
- * Shared by /market (SkillMarketCard), /plaza (PlazaSkillCard) and /profile
- * (ProfileSkillCard) so all three read a skill's rarity the same way.
+ * Shared by /market (SkillMarketCard), /plaza (PlazaSkillAttachment) and
+ * /profile (ProfileSkillCard) so all three read a skill's rarity the same way.
  * Deliberately minimal styling - a HOOK for the UI team to make this feel
  * premium later (task brief: "styling tier beda ... sebagai HOOK premium"),
  * not a finished visual design.

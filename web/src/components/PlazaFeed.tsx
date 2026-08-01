@@ -1,3 +1,4 @@
+import type { PlazaAttachment } from "@thebingofi/server/protocol";
 import { LuMessagesSquare } from "react-icons/lu";
 
 import PlazaPost from "@/components/PlazaPost";
@@ -9,13 +10,15 @@ import type { SkillTier } from "@/lib/skillTier";
 export interface PlazaFeedProps {
   /** lib/plazaThreads.ts's groupPlazaThreads(messages) - newest post first, replies oldest -> newest. */
   readonly threads: readonly PlazaThread[];
-  /** Resolves a skillId (PlazaMessage.skillId) to a display name - falls back to "Skill #<id>" if the catalog hasn't loaded that id (yet). */
+  /** Resolves a skillId (a `kind: "skill"` attachment's skillId) to a display name - falls back to "Skill #<id>" if the catalog hasn't loaded that id (yet). */
   readonly skillName: (skillId: number) => string;
   readonly skillTier: (skillId: number) => SkillTier | undefined;
+  /** GET /metadata/:id.json's `image` per skillId - see app/plaza/page.tsx's `skillImage`. */
+  readonly skillImage: (skillId: number) => string | undefined;
   /** Current visitor's nickname, "" when not set yet - threaded down to each PlazaPost so its inline reply composer can gate itself (see app/plaza/page.tsx point 4). */
   readonly nickname: string;
   readonly sending: boolean;
-  readonly onReply: (parentId: string, text: string, skillId?: number) => void;
+  readonly onReply: (parentId: string, text: string, attachment?: PlazaAttachment) => void;
 }
 
 /**
@@ -25,7 +28,7 @@ export interface PlazaFeedProps {
  * newest post is first, so the feed is normal page flow (the page itself
  * scrolls), not a boxed chat window.
  */
-export default function PlazaFeed({ threads, skillName, skillTier, nickname, sending, onReply }: PlazaFeedProps) {
+export default function PlazaFeed({ threads, skillName, skillTier, skillImage, nickname, sending, onReply }: PlazaFeedProps) {
   const locale = useLocale();
   const t = strings[locale].plaza;
 
@@ -48,9 +51,10 @@ export default function PlazaFeed({ threads, skillName, skillTier, nickname, sen
           replies={thread.replies}
           skillName={skillName}
           skillTier={skillTier}
+          skillImage={skillImage}
           nickname={nickname}
           sending={sending}
-          onReply={(text, skillId) => onReply(thread.post.id, text, skillId)}
+          onReply={(text, attachment) => onReply(thread.post.id, text, attachment)}
         />
       ))}
     </ul>
