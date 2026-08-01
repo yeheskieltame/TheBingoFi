@@ -86,6 +86,13 @@ export default function PlazaPage() {
         <p className="mx-auto max-w-md text-sm text-frost/60">{t.subtitle}</p>
       </header>
 
+      {/* Riwayat chat tampil untuk SEMUA pengunjung, termasuk yang belum punya
+          nickname. Sebelumnya seluruh daftar ikut tersembunyi di balik form
+          nickname, jadi pendatang baru selalu melihat ruangan kosong: kebalikan
+          dari fungsi ruang sosial. Gerbang nickname sekarang hanya menutup
+          kolom kirim. */}
+      <PlazaMessageList messages={plaza.messages} skillName={skillName} skillTier={skillTier} />
+
       {!nickname ? (
         <form onSubmit={handleSaveNickname} className="space-y-3 rounded-3xl border border-white/10 bg-night/55 p-5 backdrop-blur-md">
           <label htmlFor="plaza-nickname" className="block font-display text-sm font-bold text-frost">
@@ -110,8 +117,6 @@ export default function PlazaPage() {
         </form>
       ) : (
         <>
-          <PlazaMessageList messages={plaza.messages} skillName={skillName} skillTier={skillTier} />
-
           {plaza.error && (
             <div
               role="alert"
