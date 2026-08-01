@@ -237,6 +237,7 @@ export const strings = {
         shuffle: "Acak",
         lockBoard: "Kunci Board",
         locked: "Board sudah dikunci, menunggu pemain lain...",
+        skinLabel: "Skin",
       },
       match: {
         title: "Main",
@@ -251,6 +252,7 @@ export const strings = {
         bingoProgress: "Progres BINGO",
         playersTitle: "Pemain",
         lines: "Garis",
+        skinLabel: "Skin",
       },
       result: {
         title: "Selesai",
@@ -562,6 +564,7 @@ export const strings = {
         shuffle: "Shuffle",
         lockBoard: "Lock Board",
         locked: "Board locked, waiting for other players...",
+        skinLabel: "Skin",
       },
       match: {
         title: "Playing",
@@ -576,6 +579,7 @@ export const strings = {
         bingoProgress: "BINGO progress",
         playersTitle: "Players",
         lines: "Lines",
+        skinLabel: "Skin",
       },
       result: {
         title: "Finished",

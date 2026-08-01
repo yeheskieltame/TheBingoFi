@@ -289,6 +289,9 @@ test("GET /metadata/:id.json attributes carry Effect/Rarity/Charges/Cooldown/Max
       const body = (await res.json()) as { attributes: unknown };
       assert.deepEqual(body.attributes, [
         { trait_type: "Effect", value: "DOUBLE_CALL" },
+        // Angka yang jadi pusat artwork skill ini; dipakai web untuk
+        // menampilkan art di sel board bernomor sama milik pemiliknya.
+        { trait_type: "Featured Number", value: 2 },
         { trait_type: "Rarity", value: 5 },
         { trait_type: "Charges", value: 2 },
         { trait_type: "Cooldown", value: 3 },

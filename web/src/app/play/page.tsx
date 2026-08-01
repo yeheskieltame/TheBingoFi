@@ -12,6 +12,7 @@ import MatchResult from "@/components/MatchResult";
 import PlayerList from "@/components/PlayerList";
 import QuestNotifications from "@/components/QuestNotifications";
 import SkillPanel from "@/components/SkillPanel";
+import { useBoardSkins } from "@/hooks/useBoardSkins";
 import { useDraftBoard } from "@/hooks/useDraftBoard";
 import { useLocale } from "@/hooks/useLocale";
 import { useRoom } from "@/hooks/useRoom";
@@ -39,6 +40,7 @@ function PlayScreen() {
   const room = useRoom();
   const draft = useDraftBoard();
   const wallet = useWallet();
+  const boardSkins = useBoardSkins();
   const attemptedJoin = useRef(false);
 
   // Quick Match / VS Bot / manual-create entry params (set by "/" - see
@@ -234,6 +236,7 @@ function PlayScreen() {
                 onShuffle={draft.shuffle}
                 valid={draft.validation.valid}
                 validationError={draft.validation.error}
+                skins={boardSkins}
               />
               <button
                 type="button"
@@ -258,6 +261,7 @@ function PlayScreen() {
             pending={room.state.pending}
             skillSelection={room.state.skillSelection}
             onSelectSkillCell={room.selectSkillCell}
+            skins={boardSkins}
           />
           <SkillPanel
             view={room.state.match}

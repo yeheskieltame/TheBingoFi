@@ -92,6 +92,15 @@ bukan fetch/socket state.
   dari hash nickname (nickname yang sama selalu dapat warna yang sama,
   tanpa state/storage). Sebelumnya inline di komponen chat lama, dipindah
   ke `lib/` begitu lebih dari satu komponen Plaza butuh (`PlazaAvatar`).
+- `lib/boardSkins.ts` — `boardSkinsFrom(metadata, balances)`: board-number ->
+  `{ imageUrl, skillName }` untuk skill yang DIMILIKI (`balance > 0n`, dari
+  `useSkillOwnership`) DAN punya atribut `"Featured Number"` di metadata
+  off-chain (`GET /metadata/:id.json`, server-side di
+  `server/src/api/http.ts`'s `EFFECT_FEATURED_NUMBER` — sengaja TIDAK
+  di-hardcode ulang di web, angka dibaca dari metadata). Skill tanpa atribut
+  itu sekadar tidak punya skin, bukan error. Dua skill dengan Featured
+  Number sama (belum terjadi hari ini — 5 skill, 5 angka berbeda) di-resolve
+  ke skillId terkecil, deterministik. Pure, dipakai `hooks/useBoardSkins.ts`.
 
 Existing (tidak diubah kontraknya, lihat `server/API.md`):
 
@@ -146,6 +155,16 @@ Existing (tidak diubah kontraknya, lihat `server/API.md`):
   `groupPlazaThreads(messages)`, di-memo dari `messages` yang sama.
 - `hooks/useLocale.ts` — baca `lib/locale.ts` via `useSyncExternalStore`
   (SSR-safe, snapshot server selalu "id").
+- `hooks/useBoardSkins.ts` — hook tipis yang merakit `useSkillCatalog` +
+  `useSkillMetadata` + `useSkillOwnership` + `useWallet` jadi satu
+  `ReadonlyMap<number, BoardSkin>` siap pakai (`lib/boardSkins.ts`'s
+  `boardSkinsFrom`), untuk `DraftBoard`/`MatchBoard` mewarnai sel board
+  dengan artwork skill yang dimiliki pemain (skin kosmetik, board lawan
+  tetap tidak pernah terkirim). Berlaku di semua mode (termasuk casual) —
+  ini soal kepemilikan wallet, bukan loadout match. Wallet belum connect ->
+  ketiga hook di bawahnya no-op (`enabled false`/owner undefined/id list
+  kosong) dan hook ini mengembalikan map kosong, jadi guest play tidak
+  memicu RPC/HTTP tambahan apa pun.
 
 Existing (tidak diubah logic-nya, hanya ditambah action baru — lihat di
 bawah):
@@ -263,8 +282,8 @@ tidak (payload `PlazaMessage` tidak membawa address, lihat server/API.md).
 | `Lobby` | `code, players, hostId, mode, maxPlayers, visibility, isQuickMatch, playerId, isHost, canStart, pending, onStartDraft, onLeave, connectedWalletAddress?, walletLinkPending?, onLinkWallet?, loadoutPicker?` | `/play` (fase lobby) |
 | `PlayerList` | `players, hostId, mode?` (render badge BOT utk `isBot`) | `Lobby`, `/play` (fase draft) |
 | `LoadoutPicker` | `catalog, ownedSkillIds, selected, savedLoadout, catalogLoading, catalogError, saving, onToggle, onSave` | `Lobby` (slot `loadoutPicker`, mode standard) |
-| `DraftBoard` | `numbers, selectedIndex, onSelectCell, onSwapCells, onShuffle, valid, validationError?` (klik 2 sel + drag & drop) | `/play` (fase draft), `/daily` |
-| `MatchBoard` | `view (MatchView), playerId, onCall, pending, skillSelection?, onSelectSkillCell?` — board sendiri = number picker; huruf BINGO via `BingoLetters` | `/play` (fase playing) |
+| `DraftBoard` | `numbers, selectedIndex, onSelectCell, onSwapCells, onShuffle, valid, validationError?, skins?` (klik 2 sel + drag & drop; `skins` dari `useBoardSkins` — sel ber-skin pakai artwork skill + scrim + text-shadow, tetap terbaca) | `/play` (fase draft), `/daily` (tanpa `skins`) |
+| `MatchBoard` | `view (MatchView), playerId, onCall, pending, skillSelection?, onSelectSkillCell?, skins?` — board sendiri = number picker; huruf BINGO via `BingoLetters`; `skins` sama seperti `DraftBoard` | `/play` (fase playing) |
 | `BingoLetters` | `count, compact?` (1 garis = B ... 5 = BINGO) | `MatchBoard` |
 | `SkillPanel` | `view (MatchView), viewerPlayerId, pending, selection, resolutions, onActivateSkill, onCancelSelection, onNullify, onPass` | `/play` (fase playing) |
 | `MatchResult` | `winnerId, reason?, players, onBackToLanding, onPlayAgain?` | `/play` (fase finished) |

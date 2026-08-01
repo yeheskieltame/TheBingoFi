@@ -45,6 +45,21 @@ const METADATA_CACHE_CONTROL = "public, max-age=300";
 const HEX_METADATA_ID_RE = /^[0-9a-f]{64}$/;
 const DECIMAL_METADATA_ID_RE = /^[0-9]+$/;
 
+/**
+ * The board number each skill's artwork is built around (the big numeral on
+ * the card). A player who owns the skill gets that cell on their own board
+ * rendered with the artwork instead of a plain digit, so a collection shows
+ * up during play. Kept here rather than in the web client so the mapping
+ * ships with the token metadata itself and stays a single source of truth.
+ */
+const EFFECT_FEATURED_NUMBER: Readonly<Record<string, number>> = {
+  [WILD_DAUB]: 1,
+  [DOUBLE_CALL]: 2,
+  [CELL_SWAP]: 8,
+  [GHOST_CALL]: 13,
+  [NULLIFY]: 25,
+};
+
 /** One sentence per effectType (CLAUDE.md/CONCEPT.md §3's 5 starting skills) - English, no fallback data available on-chain to derive this from. */
 const EFFECT_DESCRIPTIONS: Readonly<Record<string, string>> = {
   [WILD_DAUB]: "Marks one cell on your own board without that number being called.",
@@ -91,6 +106,9 @@ function skillMetadata(def: SkillDef): SkillMetadataResponse {
     image: `${METADATA_ASSET_BASE_URL}/${slug}.png`,
     attributes: [
       { trait_type: "Effect", value: effectType },
+      ...(EFFECT_FEATURED_NUMBER[effectType] === undefined
+        ? []
+        : [{ trait_type: "Featured Number", value: EFFECT_FEATURED_NUMBER[effectType]! }]),
       { trait_type: "Rarity", value: def.rarity },
       { trait_type: "Charges", value: def.charges },
       { trait_type: "Cooldown", value: def.cooldown },

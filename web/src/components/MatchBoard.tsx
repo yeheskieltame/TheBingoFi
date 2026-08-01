@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { markedCellsFor } from "@thebingofi/server/engine";
 import type { MatchView } from "@thebingofi/server/protocol";
+import Image from "next/image";
+import { LuSparkle } from "react-icons/lu";
 
 import { useLocale } from "@/hooks/useLocale";
 import type { SkillSelectionState } from "@/hooks/useRoom";
 import { strings } from "@/i18n/strings";
+import type { BoardSkin } from "@/lib/boardSkins";
 import BingoLetters from "@/components/BingoLetters";
 
 export interface MatchBoardProps {
@@ -17,7 +20,16 @@ export interface MatchBoardProps {
   /** WILD_DAUB/CELL_SWAP cell selection in progress, if any - see hooks/useRoom.ts. While set, own board cells select skill targets instead of calling numbers. */
   readonly skillSelection?: SkillSelectionState | null;
   readonly onSelectSkillCell?: (index: number) => void;
+  /** Board-number -> owned-skill artwork (hooks/useBoardSkins.ts), empty when no skill is owned/wallet isn't connected - cosmetic only, see lib/boardSkins.ts. */
+  readonly skins?: ReadonlyMap<number, BoardSkin>;
 }
+
+/**
+ * Keeps skinned-cell numbers legible over arbitrary artwork regardless of the
+ * per-state scrim color below (task brief's "keterbacaan angka adalah inti
+ * permainan"): a dark drop shadow plus a wider soft glow behind the glyph.
+ */
+const SKIN_TEXT_SHADOW = "[text-shadow:0_1px_2px_rgba(0,0,0,0.85),0_0_6px_rgba(0,0,0,0.6)]";
 
 /**
  * Dumb: the "playing" phase. The own board IS the number picker — every
@@ -26,7 +38,15 @@ export interface MatchBoardProps {
  * already-marked-for-you number is never beneficial anyway). Line progress
  * renders as B-I-N-G-O letters (1 garis = B ... 5 = BINGO).
  */
-export default function MatchBoard({ view, playerId, onCall, pending, skillSelection, onSelectSkillCell }: MatchBoardProps) {
+export default function MatchBoard({
+  view,
+  playerId,
+  onCall,
+  pending,
+  skillSelection,
+  onSelectSkillCell,
+  skins,
+}: MatchBoardProps) {
   const locale = useLocale();
   const t = strings[locale].play.match;
   const calledSet = new Set(view.calledNumbers);
@@ -81,8 +101,37 @@ export default function MatchBoard({ view, playerId, onCall, pending, skillSelec
               {marks.map(
                 (marked, index) => {
                   const number = view.board![index]!;
+                  const skin = skins?.get(number);
                   if (selecting) {
                     const picked = skillSelection!.cells.includes(index);
+                    if (skin) {
+                      return (
+                        <button
+                          key={index}
+                          type="button"
+                          aria-pressed={picked}
+                          onClick={() => onSelectSkillCell!(index)}
+                          title={`${t.skinLabel}: ${skin.skillName}`}
+                          className={`group relative aspect-square w-full overflow-hidden rounded-xl font-display text-base font-bold transition-all sm:text-lg ${
+                            picked
+                              ? "-translate-y-0.5 shadow-lg shadow-amber-400/30 ring-2 ring-amber-200"
+                              : "ring-1 ring-amber-300/60 hover:-translate-y-0.5"
+                          }`}
+                        >
+                          <Image src={skin.imageUrl} alt="" fill sizes="80px" className="object-cover" />
+                          <span
+                            aria-hidden
+                            className={`absolute inset-0 transition-colors ${
+                              picked ? "bg-amber-400/80" : "bg-amber-950/35 group-hover:bg-amber-400/25"
+                            }`}
+                          />
+                          <LuSparkle aria-hidden className="absolute right-1 top-1 z-20 size-2.5 text-white/85 drop-shadow sm:size-3" />
+                          <span className={`relative z-10 ${SKIN_TEXT_SHADOW} ${picked ? "text-glacier-ink" : "text-frost"}`}>
+                            {number}
+                          </span>
+                        </button>
+                      );
+                    }
                     return (
                       <button
                         key={index}
@@ -100,6 +149,47 @@ export default function MatchBoard({ view, playerId, onCall, pending, skillSelec
                     );
                   }
                   const callable = canCall && !marked;
+                  if (skin) {
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        aria-pressed={marked}
+                        disabled={!callable}
+                        onClick={callable ? () => onCall(number) : undefined}
+                        title={`${t.skinLabel}: ${skin.skillName}`}
+                        className={`group relative aspect-square w-full overflow-hidden rounded-xl font-display text-base font-bold transition-all sm:text-lg ${
+                          justMarked(index) ? "animate-daub" : ""
+                        } ${
+                          marked
+                            ? "shadow-lg shadow-frost/20 ring-1 ring-frost"
+                            : callable
+                              ? "ring-1 ring-glacier hover:-translate-y-0.5 hover:shadow-lg hover:shadow-glacier/30"
+                              : "ring-1 ring-white/10"
+                        }`}
+                      >
+                        <Image src={skin.imageUrl} alt="" fill sizes="80px" className="object-cover" />
+                        <span
+                          aria-hidden
+                          className={`absolute inset-0 transition-colors ${
+                            marked
+                              ? "bg-frost/65"
+                              : callable
+                                ? "bg-glacier-deep/55 group-hover:bg-glacier/65"
+                                : "bg-slate-950/55"
+                          }`}
+                        />
+                        <LuSparkle aria-hidden className="absolute right-1 top-1 z-20 size-2.5 text-white/85 drop-shadow sm:size-3" />
+                        <span
+                          className={`relative z-10 ${SKIN_TEXT_SHADOW} ${
+                            marked ? "text-glacier-ink" : callable ? "text-frost" : "text-ice/60"
+                          }`}
+                        >
+                          {number}
+                        </span>
+                      </button>
+                    );
+                  }
                   return (
                     <button
                       key={index}
