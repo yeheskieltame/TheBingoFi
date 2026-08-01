@@ -75,6 +75,23 @@ bukan fetch/socket state.
 - `lib/locale.ts` — reactive locale store (id/en) di localStorage, pub-sub
   kecil (bukan React Context) supaya `hooks/useLocale.ts` bisa re-render
   semua consumer begitu language switcher (Header) diklik.
+- `lib/plazaThreads.ts` — `groupPlazaThreads(messages)`: susun array flat
+  `PlazaMessage[]` (kontrak server, kronologis oldest→newest) jadi thread
+  ala X, `{ post, replies }[]`, post terbaru duluan, balasan di dalam
+  thread tetap oldest→newest. Sebuah `PlazaMessage.replyTo` yang tidak
+  merujuk id manapun di buffer (parent sudah age-out dari history buffer
+  server, lihat `server/src/plaza/plaza.ts`) diperlakukan sebagai post
+  biasa, bukan dibuang. Dipakai `hooks/usePlaza.ts` (expose sebagai
+  `threads`), bukan komponen langsung.
+- `lib/relativeTime.ts` — `relativeTime(at, strings, now?)`: label waktu
+  relatif singkat ("2m", "1j"/"1h", "kemarin"/"yesterday", "3h"/"3d") dari
+  timestamp `PlazaMessage.at` (epoch ms). Pure, `now` overridable. Semua
+  teks lewat parameter `strings` (lihat `i18n/strings.ts`'s `plaza.time*`),
+  fungsi ini sendiri tidak baca locale. Dipakai `PlazaPost`/`PlazaReply`.
+- `lib/avatarTint.ts` — `avatarTint(nickname)`: warna avatar diturunkan
+  dari hash nickname (nickname yang sama selalu dapat warna yang sama,
+  tanpa state/storage). Sebelumnya inline di komponen chat lama, dipindah
+  ke `lib/` begitu lebih dari satu komponen Plaza butuh (`PlazaAvatar`).
 
 Existing (tidak diubah kontraknya, lihat `server/API.md`):
 
@@ -118,12 +135,15 @@ Existing (tidak diubah kontraknya, lihat `server/API.md`):
   `Marketplace.buy(skillId, amount)`. `buy(skillId, amount, quotedUnitPriceWei)`
   mengirim `msg.value = quote * amount * 1.02` (buffer 2% — kontrak
   auto-refund kelebihan, CEI, lihat contracts/README.md's Dynamic Pricing).
-- `hooks/usePlaza.ts` — state Plaza chat global (server/API.md's "Plaza
+- `hooks/usePlaza.ts` — state Plaza feed global (server/API.md's "Plaza
   chat"): connect/disconnect socket di mount/unmount halaman `/plaza`
   (singleton yang sama dengan `useRoom.ts`, lihat `lib/socket.ts`),
   `plaza:history` sekali saat connect, listen `plaza:message` (broadcast ke
   SEMUA socket termasuk pengirim sendiri — jadi tidak perlu optimistic
-  local append), `send(nickname, text, skillId?)` untuk `plaza:send`.
+  local append), `send(nickname, text, skillId?)` untuk post baru,
+  **`reply(nickname, text, parentId, skillId?)`** untuk balasan (`plaza:send`
+  dengan `replyTo`), plus **`threads`** — hasil `lib/plazaThreads.ts`'s
+  `groupPlazaThreads(messages)`, di-memo dari `messages` yang sama.
 - `hooks/useLocale.ts` — baca `lib/locale.ts` via `useSyncExternalStore`
   (SSR-safe, snapshot server selalu "id").
 
@@ -204,13 +224,20 @@ RPC/deployment lain.
   (`Marketplace.buy`, kirim quote×amount×1.02, kelebihan auto-refund).
   Tanpa wallet: katalog tetap kelihatan, tombol beli nonaktif + ajakan
   connect. Sold out → tombol disabled.
-- `/plaza` — chat sosial global (CONCEPT.md §7.4b), realtime via
-  `plaza:send`/`plaza:history`/`plaza:message` (server/API.md). Guest play
-  penuh untuk chat teks (nickname dari storage, diminta inline kalau
-  kosong); wallet connect membuka dropdown "lampirkan skill" (skill yang
-  DIMILIKI) — pesan dengan `skillId` dirender sebagai kartu kecil (nama +
-  tier), klik → `/market`. Rate limit server ditampilkan sebagai error
-  banner.
+- `/plaza` — feed sosial global ala X/Twitter (CONCEPT.md §7.4b), realtime
+  via `plaza:send`/`plaza:history`/`plaza:message` (server/API.md). Server
+  tetap mengirim histori FLAT & kronologis (`PlazaMessage[]`, opsional
+  `replyTo` — kedalaman maks 1 level); pengelompokan jadi thread (post +
+  balasannya, post terbaru duluan) murni logic klien
+  (`lib/plazaThreads.ts`, di-expose `hooks/usePlaza.ts` sebagai `threads`).
+  Guest play penuh untuk posting/membalas (nickname dari storage, diminta
+  inline kalau kosong — gerbangnya hanya menutup composer, feed tetap
+  kebaca tanpa nickname); wallet connect membuka dropdown "lampirkan skill"
+  (skill yang DIMILIKI) di composer post utama — pesan dengan `skillId`
+  dirender sebagai kartu kecil (nama + tier), klik → `/market`. Balas
+  membuka composer inline di dalam thread (bukan pindah halaman); thread
+  dengan banyak balasan menampilkan 2 teratas + tombol perluas. Rate limit
+  server ditampilkan sebagai error banner.
 - `/profile/[address]` — profil publik shareable (CONCEPT.md §7.4b):
   validasi address (viem `isAddress`, invalid → 404 lewat `notFound()`),
   koleksi skill on-chain (`balanceOfBatch` seluruh katalog) + tier badge +
@@ -248,8 +275,12 @@ tidak (payload `PlazaMessage` tidak membawa address, lihat server/API.md).
 | `SkillMarketCard` | `entry, sale, currentPrice, priceLoading, metadata, ownedBalance, amount, onAmountChange, walletConnected, buyDisabled, buyStatus, buyError, txHash, onBuy` | `/market` |
 | `SkillMedia` | `imageUrl?, animationUrl?, label` | `SkillMarketCard` — art slot dengan fallback inisial (`onError`) |
 | `SkillTierBadge` | `tier` | `SkillMarketCard`, `PlazaSkillCard`, `ProfileSkillCard` |
-| `PlazaMessageList` | `messages, skillName, skillTier` | `/plaza` |
-| `PlazaSkillCard` | `skillId, name, tier` | `PlazaMessageList` (pesan dengan `skillId`) |
+| `PlazaFeed` | `threads (readonly PlazaThread[]), skillName, skillTier, nickname, sending, onReply(parentId, text, skillId?)` | `/plaza` |
+| `PlazaPost` | `post (PlazaMessage), replies (readonly PlazaMessage[]), skillName, skillTier, nickname, sending, onReply(text, skillId?)` | `PlazaFeed` (satu per thread) |
+| `PlazaReply` | `reply (PlazaMessage), skillName, skillTier` | `PlazaPost` (satu per balasan) |
+| `PlazaComposer` | `nickname, placeholder, submitLabel, sending, onSubmit(text, skillId?), skillPicker? { label, noneLabel, options }, compact?, onCancel?, cancelLabel?, autoFocus?` | `/plaza` (composer utama), `PlazaPost` (composer balasan inline, `compact`) |
+| `PlazaAvatar` | `nickname, className?` (ukuran/text-size lewat class, warna dari `lib/avatarTint.ts`) | `PlazaComposer`, `PlazaPost`, `PlazaReply` |
+| `PlazaSkillCard` | `skillId, name, tier` | `PlazaPost`, `PlazaReply` (pesan dengan `skillId`) |
 | `ProfileView` | `address` | `app/profile/[address]/page.tsx` (Client Component body) |
 | `ProfileSkillCard` | `entry, balance, tier` | `ProfileView` |
 

@@ -49,3 +49,15 @@ CREATE TABLE IF NOT EXISTS plaza_messages (
 );
 
 CREATE INDEX IF NOT EXISTS plaza_messages_created_at_idx ON plaza_messages (created_at DESC);
+
+-- reply_to: the id of the parent message being replied to, absent for a
+-- top-level post (see plaza/plaza.ts). ADD COLUMN IF NOT EXISTS rather than
+-- part of the CREATE TABLE above because this column was added after
+-- plaza_messages already existed in production - this line must stay
+-- idempotent and non-destructive (no DROP/RECREATE) so it applies cleanly
+-- to a database that already has real messages in it. No FK/REFERENCES: a
+-- reply's parent existence + max-depth-1 rule are enforced in application
+-- code at insert time (plaza.ts's addMessage), and a parent id here is
+-- allowed to point at nothing (e.g. the in-memory ring buffer evicted it) -
+-- see this column's doc in plaza.ts for why that's fine, not a bug.
+ALTER TABLE plaza_messages ADD COLUMN IF NOT EXISTS reply_to uuid;

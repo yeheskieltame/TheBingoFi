@@ -84,8 +84,8 @@ socket.emit("room:create", { nickname: "Alice" }, (res) => {
 | `loadout:set` | `{ skillIds: number[] }` | `{ view: LobbyView }` | Set loadout (0-2 skill id unik) — hanya room `mode: "standard"`, fase `lobby`/`draft`, wajib sudah `wallet:link` (lihat "Mode room & Loadout" di bawah). |
 | `skill:use` | `{ effectType: string, args?: { cellIndex?: number, a?: number, b?: number } }` | `{ view: MatchView }` | Pakai 1 skill dari loadout sendiri saat giliran sendiri. Lihat "Skill in-match" di bawah. |
 | `skill:respond` | `{ nullify: boolean }` | `{ view: MatchView }` | Jawab window Nullify (`true` = batalkan skill lawan, `false` = biarkan). Lihat "Skill in-match" di bawah. |
-| `plaza:send` | `{ nickname: string, text: string, skillId?: number }` | `{ message: PlazaMessage }` | Kirim pesan ke Plaza (chat sosial GLOBAL, bukan per room) — jalan tanpa join room/wallet sama sekali (guest play). Lihat "Plaza chat" di bawah. |
-| `plaza:history` | `{}` | `{ messages: PlazaMessage[] }` | Ambil buffer riwayat Plaza (maks 100 pesan terakhir, urut lama→baru). Lihat "Plaza chat" di bawah. |
+| `plaza:send` | `{ nickname: string, text: string, skillId?: number, replyTo?: string }` | `{ message: PlazaMessage }` | Kirim pesan ke Plaza (chat sosial GLOBAL, bukan per room) — jalan tanpa join room/wallet sama sekali (guest play). `replyTo` opsional = id pesan induk untuk membalas (maks kedalaman 1 level). Lihat "Plaza chat" di bawah. |
+| `plaza:history` | `{}` | `{ messages: PlazaMessage[] }` | Ambil buffer riwayat Plaza (maks 300 pesan terakhir, urut lama→baru, post DAN balasan tercampur flat — client yang mengelompokkan jadi thread). Lihat "Plaza chat" di bawah. |
 
 ### Tabel event: server → client
 
@@ -97,7 +97,7 @@ socket.emit("room:create", { nickname: "Alice" }, (res) => {
 | `quest:completed` | `{ questId: string, title: string }` | Dikirim ke **socket milik pemain itu saja** (bukan broadcast room) setiap kali quest pemain itu baru saja selesai — termasuk quest bertipe `skill_used` dan quest bot ladder (`minBotLevel`, lihat "Quest bot ladder" di bawah). Ditarget lewat `accountId` stabil (lihat "Identity" di atas) — transparan buat FE (socket yang sama tetap menerimanya), tapi ini artinya progress-nya sendiri kini konsisten lintas match/reconnect, bukan reset tiap match seperti sebelumnya. |
 | `skill:pending` | `{ playerId: string, effectType: string, awaiting: string[] }` | Broadcast ke room saat sebuah skill use membuka window Nullify (sekali, saat window terbuka — lihat "Skill in-match" di bawah). |
 | `skill:resolved` | `{ playerId: string, effectType: string, nullified: boolean, nullifiedBy?: string }` | Broadcast ke room saat skill yang pending selesai — dibatalkan (`nullified: true`, `nullifiedBy` terisi) atau berhasil (`nullified: false`), termasuk saat window 15 detik habis tanpa jawaban. |
-| `plaza:message` | `PlazaMessage` | Broadcast ke **SEMUA socket yang connect** (`io.emit`, bukan cuma satu room) setiap kali `plaza:send` sukses — termasuk ke pengirim sendiri. Lihat "Plaza chat" di bawah. |
+| `plaza:message` | `PlazaMessage` | Broadcast ke **SEMUA socket yang connect** (`io.emit`, bukan cuma satu room) setiap kali `plaza:send` sukses — termasuk ke pengirim sendiri. Selalu SATU pesan (post atau balasan, bentuknya sama — cek `replyTo` untuk beda-in), client yang menyusun. Lihat "Plaza chat" di bawah. |
 
 ### `LobbyView`
 
@@ -546,12 +546,13 @@ interface PlazaMessage {
   nickname: string;
   text: string;
   skillId?: number;   // skill yang dipamerkan (FE render sebagai kartu, bukan teks) — lihat di bawah
+  replyTo?: string;    // id pesan induk yang dibalas — absen berarti ini POST utama, lihat "Balasan" di bawah
   at: number;          // Date.now() saat pesan disimpan server
 }
 ```
 
-- **`plaza:send { nickname, text, skillId? }`** — server yang mengisi
-  `id`/`at` (client tidak bisa memalsukannya). Validasi (di
+- **`plaza:send { nickname, text, skillId?, replyTo? }`** — server yang
+  mengisi `id`/`at` (client tidak bisa memalsukannya). Validasi (di
   `server/src/plaza/plaza.ts`, pure & unit-tested terpisah dari socket):
   - `nickname`: 1-24 karakter setelah `trim()`.
   - `text`: 1-280 karakter setelah `trim()`.
@@ -560,27 +561,75 @@ interface PlazaMessage {
     (CONCEPT.md §7.4b: "jual Wild Daub rare, cek profilku"), FE yang
     merender kartunya; verifikasi ownership sungguhan menyusul bareng
     marketplace P2P.
+  - `replyTo` (opsional, lihat "Balasan" di bawah): id pesan yang masih ADA
+    di store saat ini, dan pesan itu sendiri bukan balasan (maks kedalaman
+    1 level).
   - **Rate limit**: minimal 2000ms antar pesan dari socket yang sama
-    (per `socket.id`, bukan per nickname/wallet) — pesan yang ditolak
-    karena payload invalid TIDAK memakan slot rate limit (masih boleh
+    (per `socket.id`, bukan per nickname/wallet) — berlaku SAMA untuk post
+    maupun balasan. Pesan yang ditolak karena payload invalid (termasuk
+    `replyTo` yang tidak valid) TIDAK memakan slot rate limit (masih boleh
     langsung coba lagi dengan payload yang benar).
   - Gagal validasi ATAU kena rate limit → ack `{ ok: false, error }` dengan
-    pesan jelas (mis. "Rate limited - tunggu 1230ms lagi sebelum kirim
-    pesan lagi").
+    pesan jelas, mis.:
+    - `"Rate limited - tunggu 1230ms lagi sebelum kirim pesan lagi"`
+    - `"Parent message not found"` — `replyTo` menunjuk id yang tidak ada
+      (tidak pernah ada, atau sudah tergeser keluar ring buffer in-memory —
+      lihat "Balasan" di bawah).
+    - `"Cannot reply to a reply - max thread depth is 1"` — `replyTo`
+      menunjuk pesan yang itu sendiri sudah punya `replyTo`.
   - Sukses → ack `{ message: PlazaMessage }`, lalu `plaza:message` di-
     broadcast (`io.emit`, **bukan** ke satu room) ke SEMUA socket yang
-    sedang connect, termasuk pengirim sendiri.
-- **`plaza:history {}`** — ack `{ messages: PlazaMessage[] }`, isi ring
-  buffer in-memory (maks 100 pesan terakhir, urut lama→baru). Berguna untuk
-  mengisi riwayat chat begitu client baru connect/buka Plaza.
+    sedang connect, termasuk pengirim sendiri. Selalu satu `PlazaMessage`
+    (post atau balasan, bentuknya identik).
+- **`plaza:history {}`** — ack `{ messages: PlazaMessage[] }`, isi buffer
+  (maks 300 pesan terakhir, urut lama→baru) **flat dan kronologis** — post
+  dan balasan tercampur, ditandai lewat `replyTo`. Client yang mengelompokkan
+  balasan di bawah post induknya jadi thread; server tidak pernah
+  mengelompokkan. Berguna untuk mengisi riwayat chat begitu client baru
+  connect/buka Plaza.
+
+#### Balasan (comment)
+
+Plaza mendukung SATU level balasan per pesan (bukan thread bercabang) —
+CLAUDE.md: "Kedalaman maksimal 1 level: pesan yang sudah punya `replyTo`
+tidak boleh dibalas lagi." Alasannya thread bercabang dalam sulit dirender
+dan tidak diminta desain.
+
+```ts
+// balas pesan induk dengan id "abc-123"
+socket.emit(
+  "plaza:send",
+  { nickname: "Bob", text: "setuju!", replyTo: "abc-123" },
+  (res) => {
+    if (!res.ok) return console.error(res.error); // mis. "Parent message not found"
+  },
+);
+```
+
+- Kapasitas buffer dinaikkan dari 100 → **300 pesan** supaya thread lama
+  tidak cepat terpotong (post kehilangan balasannya kalau induknya keburu
+  tergeser keluar ring buffer). Ini HANYA relevan untuk mode in-memory (lihat
+  di bawah) — mode Postgres tidak pernah membuang baris lama, hanya
+  membatasi berapa yang dikembalikan `plaza:history`.
+- **Kalau induk sebuah balasan tergeser keluar ring buffer in-memory**
+  (server restart atau buffer penuh), balasan yang SUDAH tersimpan itu
+  tetap ada dan tetap muncul di `plaza:history` — server tidak pernah
+  crash karena ini. `replyTo`-nya cuma menunjuk id yang sudah tidak ada di
+  hasil `plaza:history`; client menampilkannya sebagai post biasa (bukan
+  thread). Ini beda dari validasi saat KIRIM: `plaza:send` dengan `replyTo`
+  yang SUDAH tidak ada saat itu ditolak (`"Parent message not found"`) —
+  aturan ini hanya soal balasan yang sudah berhasil tersimpan, induknya
+  baru hilang belakangan.
 
 ```ts
 socket.on("plaza:message", (msg) => {
-  // render 1 baris chat; kalau msg.skillId ada, render kartu skill-nya
+  // render 1 baris chat; kalau msg.skillId ada, render kartu skill-nya;
+  // kalau msg.replyTo ada, render sebagai balasan (atau post biasa kalau
+  // induknya tidak ditemukan di state client)
 });
 
 socket.emit("plaza:history", {}, (res) => {
-  if (res.ok) res.messages.forEach(renderPlazaMessage);
+  if (res.ok) res.messages.forEach(renderPlazaMessage); // post + balasan, flat, client yang mengelompokkan
 });
 
 socket.emit("plaza:send", { nickname: "Alice", text: "jual Wild Daub rare, cek profilku", skillId: 7 }, (res) => {
@@ -957,7 +1006,7 @@ quest_progress (player_id uuid REFERENCES players(id), quest_id text,
 daily_scores (date text, player_id uuid, nickname text, score int,
               calls_to_bingo int, PRIMARY KEY (date, player_id))
 plaza_messages (id uuid PK, player_id uuid NULL, nickname text, text text,
-                 skill_id int NULL, created_at timestamptz,
+                 skill_id int NULL, reply_to uuid NULL, created_at timestamptz,
                  index (created_at DESC))
 ```
 
@@ -980,6 +1029,15 @@ penting per tabel:
   CLAUDE.md); `player_id` cuma terisi kalau socket itu KEBETULAN sudah
   punya `accountId` saat mengirim (dari `identity:hello` atau sudah pernah
   join room sebelumnya di sesi yang sama).
+- `plaza_messages.reply_to` nullable, TANPA FK — id pesan induk untuk fitur
+  balasan (lihat "Balasan" di §1's "Plaza chat"). Ditambahkan lewat `ALTER
+  TABLE ... ADD COLUMN IF NOT EXISTS` di `schema.sql` (bukan bagian dari
+  `CREATE TABLE` aslinya) supaya idempoten DAN aman dijalankan di database
+  yang sudah berisi data nyata — tidak pernah drop/recreate tabel apa pun,
+  cukup boot ulang server dan migrasi jalan otomatis (lihat `migrate.ts`).
+  Tanpa FK karena existensi induk + aturan kedalaman maksimal 1 level
+  divalidasi di kode aplikasi (`plaza/plaza.ts`'s `addMessage`), bukan
+  constraint database.
 
 ### Test Postgres (opt-in)
 

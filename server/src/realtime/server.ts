@@ -1019,9 +1019,12 @@ export function createRealtimeServer(httpServer: NodeHttpServer, opts: RealtimeS
     //
     // Deliberately NOT room-scoped: plaza:send broadcasts to every
     // connected socket via io.emit, never io.to(roomChannel(...)) - see
-    // CONCEPT.md §7.4b. Validation, trimming, and rate limiting all live in
-    // plaza.ts's addMessage; this handler only forwards the raw payload in
-    // and the resulting message out.
+    // CONCEPT.md §7.4b. Validation, trimming, rate limiting, and reply
+    // rules (optional `replyTo`, max depth 1) all live in plaza.ts's
+    // addMessage; this handler only forwards the raw payload in and the
+    // resulting message (post or reply, same shape either way) out. History
+    // stays flat/chronological - grouping replies under their post is a
+    // client-side concern.
 
     socket.on(
       "plaza:send",

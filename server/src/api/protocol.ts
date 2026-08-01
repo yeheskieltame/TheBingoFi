@@ -165,13 +165,18 @@ export interface SkillRespondPayload {
  * to any room (works for guests too, no room/wallet required). `skillId`
  * optionally attaches a skill the sender owns so FE can render it as a
  * card ("pamer skill") - ownership itself is never checked here, only
- * shape (see plaza/plaza.ts's validateSkillId). See server/API.md's
- * "Plaza chat" section for validation rules and rate limit.
+ * shape (see plaza/plaza.ts's validateSkillId). `replyTo` optionally marks
+ * this message as a reply to an existing message's id - max depth 1 (a
+ * reply itself cannot be replied to) and the parent must currently exist
+ * in the store, or the ack comes back `{ ok: false }` (see
+ * plaza/plaza.ts's addMessage). See server/API.md's "Plaza chat" section
+ * for validation rules, rate limit, and the reply rules.
  */
 export interface PlazaSendPayload {
   readonly nickname: string;
   readonly text: string;
   readonly skillId?: number;
+  readonly replyTo?: string;
 }
 
 // -- client -> server ack data ----------------------------------------------
@@ -225,7 +230,7 @@ export interface PlazaSendAckData {
   readonly message: PlazaMessage;
 }
 
-/** Ack for plaza:history - the current buffer, oldest -> newest, at most 100 messages. */
+/** Ack for plaza:history - the current buffer, oldest -> newest, at most PLAZA_HISTORY_LIMIT (300) messages, posts and replies interleaved. */
 export interface PlazaHistoryAckData {
   readonly messages: readonly PlazaMessage[];
 }
@@ -257,7 +262,7 @@ export interface ClientToServerEvents {
   "skill:respond": (payload: SkillRespondPayload, ack: Ack<MatchCallAckData>) => void;
   /** Sends a message to the global Plaza chat - see PlazaSendPayload. Rate limited to 1 per 2s per socket. */
   "plaza:send": (payload: PlazaSendPayload, ack: Ack<PlazaSendAckData>) => void;
-  /** Fetches the current Plaza history buffer (oldest -> newest, at most 100 messages). */
+  /** Fetches the current Plaza history buffer (oldest -> newest, at most 300 messages, posts and replies interleaved). */
   "plaza:history": (payload: EmptyAckData, ack: Ack<PlazaHistoryAckData>) => void;
 }
 

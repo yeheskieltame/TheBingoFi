@@ -166,4 +166,34 @@ test("db.test.ts setup", { skip }, async (t) => {
     ]);
     assert.equal(guestRow.rows[0]!.player_id, null, "no accountId supplied -> player_id stays NULL (guest chat)");
   });
+
+  await t.test("plaza: a reply's replyTo round-trips through Postgres (reply_to column, added via idempotent ALTER)", async () => {
+    const store = createPlazaStore(pool);
+
+    const parent = await store.addMessage("socket-parent", { nickname: "Alice", text: "parent post" }, 10_000);
+    const reply = await store.addMessage(
+      "socket-reply",
+      { nickname: "Bob", text: "a reply", replyTo: parent.id },
+      20_000,
+    );
+    assert.equal(reply.replyTo, parent.id);
+
+    const row = await pool!.query<{ reply_to: string | null }>(`SELECT reply_to FROM plaza_messages WHERE id = $1`, [
+      reply.id,
+    ]);
+    assert.equal(row.rows[0]!.reply_to, parent.id);
+
+    // A fresh store instance (same pool) must resolve the SAME parent by id
+    // - findById isn't limited to the PLAZA_HISTORY_LIMIT window like
+    // getHistory() is.
+    const freshStore = createPlazaStore(pool);
+    await assert.rejects(
+      () => freshStore.addMessage("socket-nested", { nickname: "Carol", text: "nested reply", replyTo: reply.id }, 30_000),
+      /max thread depth is 1/i,
+    );
+    await assert.rejects(
+      () => freshStore.addMessage("socket-orphan", { nickname: "Dave", text: "orphan reply", replyTo: "00000000-0000-0000-0000-000000000000" }, 40_000),
+      /Parent message not found/,
+    );
+  });
 });

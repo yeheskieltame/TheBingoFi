@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { PlazaMessage } from "@thebingofi/server/protocol";
 
 import { ensureIdentity } from "@/lib/identity";
+import { groupPlazaThreads, type PlazaThread } from "@/lib/plazaThreads";
 import { getSocket } from "@/lib/socket";
 
 export interface PlazaState {
@@ -90,7 +91,28 @@ export function usePlaza() {
     });
   }, []);
 
+  /**
+   * Posts a reply to `parentId` (another message's `id`) via the same
+   * `plaza:send`, just with `replyTo` set - the server enforces max depth 1
+   * (a reply can't itself be replied to) and that the parent currently
+   * exists, surfaced back through the same ack-error path as `send`.
+   */
+  const reply = useCallback((nickname: string, text: string, parentId: string, skillId?: number) => {
+    dispatch({ type: "sending", value: true });
+    socketRef.current.emit("plaza:send", { nickname, text, skillId, replyTo: parentId }, (res) => {
+      dispatch({ type: "sending", value: false });
+      if (!res.ok) {
+        dispatch({ type: "error", message: res.error });
+      }
+    });
+  }, []);
+
   const clearError = useCallback(() => dispatch({ type: "clearError" }), []);
 
-  return { ...state, send, clearError };
+  // Flat history -> X-style threads (lib/plazaThreads.ts), newest post
+  // first. Recomputed only when the underlying message list actually
+  // changes (history load, a new post/reply arriving).
+  const threads: readonly PlazaThread[] = useMemo(() => groupPlazaThreads(state.messages), [state.messages]);
+
+  return { ...state, threads, send, reply, clearError };
 }

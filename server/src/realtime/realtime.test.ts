@@ -1403,3 +1403,110 @@ test("plaza:send rate limit is per socket, not global", async () => {
   assert.equal(first.ok, true);
   assert.equal(fromOther.ok, true);
 });
+
+// -- plaza replies (comments, max depth 1) -------------------------------
+//
+// Pure validation/rate-limit logic for replyTo is unit tested directly in
+// plaza/plaza.test.ts; this section only exercises the transport: ack
+// shape, ack errors round-tripping through safeHandler, and broadcast.
+
+test("plaza:send accepts a replyTo pointing at an existing message, broadcast carries it", async () => {
+  const a = await connectClient();
+  const b = await connectClient(); // separate socket - avoids the 2s rate limit for the second send
+
+  // Register + drain the PARENT's own broadcast on b first - otherwise the
+  // listener registered below could race with it (b receives plaza:message
+  // for the parent too, being connected before it's sent) and capture the
+  // wrong message.
+  const parentBroadcastOnB = waitForEvent<Record<string, unknown>>(b, "plaza:message");
+  const parentRes = await emit(a, "plaza:send", { nickname: "Alice", text: "top-level" });
+  assert.equal(parentRes.ok, true);
+  if (!parentRes.ok) throw new Error("unreachable");
+  const parentId = (parentRes.message as { id: string }).id;
+  await parentBroadcastOnB;
+
+  const replyBroadcastOnB = waitForEvent<Record<string, unknown>>(b, "plaza:message");
+  const replyRes = await emit(b, "plaza:send", { nickname: "Bob", text: "a reply", replyTo: parentId });
+  assert.equal(replyRes.ok, true);
+  if (!replyRes.ok) throw new Error("unreachable");
+  assert.equal((replyRes.message as { replyTo?: string }).replyTo, parentId);
+
+  const broadcast = await replyBroadcastOnB;
+  assert.equal(broadcast.replyTo, parentId);
+});
+
+test("plaza:send rejects a replyTo pointing at a message id that does not exist", async () => {
+  const a = await connectClient();
+  const res = await emit(a, "plaza:send", { nickname: "Alice", text: "orphan reply", replyTo: "no-such-id" });
+  assert.equal(res.ok, false);
+  if (res.ok) throw new Error("unreachable");
+  assert.match(res.error, /parent message not found/i);
+});
+
+test("plaza:send rejects replying to a message that is itself a reply (max depth 1)", async () => {
+  const a = await connectClient();
+  const b = await connectClient();
+  const c = await connectClient();
+
+  const parentRes = await emit(a, "plaza:send", { nickname: "Alice", text: "top-level" });
+  assert.equal(parentRes.ok, true);
+  if (!parentRes.ok) throw new Error("unreachable");
+  const parentId = (parentRes.message as { id: string }).id;
+
+  const replyRes = await emit(b, "plaza:send", { nickname: "Bob", text: "first-level reply", replyTo: parentId });
+  assert.equal(replyRes.ok, true);
+  if (!replyRes.ok) throw new Error("unreachable");
+  const replyId = (replyRes.message as { id: string }).id;
+
+  const nestedRes = await emit(c, "plaza:send", { nickname: "Carol", text: "nested reply", replyTo: replyId });
+  assert.equal(nestedRes.ok, false);
+  if (nestedRes.ok) throw new Error("unreachable");
+  assert.match(nestedRes.error, /max thread depth is 1/i);
+});
+
+test("plaza:history returns posts and replies together, flat and chronological", async () => {
+  const a = await connectClient();
+  const b = await connectClient();
+  const c = await connectClient();
+
+  const postRes = await emit(a, "plaza:send", { nickname: "Alice", text: "post 1" });
+  assert.equal(postRes.ok, true);
+  if (!postRes.ok) throw new Error("unreachable");
+  const postId = (postRes.message as { id: string }).id;
+
+  const replyRes = await emit(b, "plaza:send", { nickname: "Bob", text: "reply to post 1", replyTo: postId });
+  assert.equal(replyRes.ok, true);
+
+  const post2Res = await emit(c, "plaza:send", { nickname: "Carol", text: "post 2" });
+  assert.equal(post2Res.ok, true);
+
+  const historyRes = await emit(a, "plaza:history", {});
+  assert.equal(historyRes.ok, true);
+  if (!historyRes.ok) throw new Error("unreachable");
+  const messages = historyRes.messages as { id: string; text: string; replyTo?: string }[];
+  assert.deepEqual(
+    messages.map((m) => m.text),
+    ["post 1", "reply to post 1", "post 2"],
+  );
+  assert.equal(messages[0]!.replyTo, undefined);
+  assert.equal(messages[1]!.replyTo, postId);
+  assert.equal(messages[2]!.replyTo, undefined);
+});
+
+test("plaza:send rate limit applies to replies just like top-level posts", async () => {
+  const a = await connectClient();
+  const b = await connectClient();
+
+  const parentRes = await emit(a, "plaza:send", { nickname: "Alice", text: "top-level" });
+  assert.equal(parentRes.ok, true);
+  if (!parentRes.ok) throw new Error("unreachable");
+  const parentId = (parentRes.message as { id: string }).id;
+
+  const firstReply = await emit(b, "plaza:send", { nickname: "Bob", text: "reply one", replyTo: parentId });
+  assert.equal(firstReply.ok, true);
+
+  const secondReply = await emit(b, "plaza:send", { nickname: "Bob", text: "reply two", replyTo: parentId });
+  assert.equal(secondReply.ok, false);
+  if (secondReply.ok) throw new Error("unreachable");
+  assert.match(secondReply.error, /rate limit/i);
+});
